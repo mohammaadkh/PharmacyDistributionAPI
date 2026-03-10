@@ -1,8 +1,7 @@
 ﻿using PharmacyAPI.Model;
 using PharmacyAPI.Models;
 
-namespace PharmacyAPI.Models // تأكد من وجود حرف الـ s هنا ليتطابق مع باقي الجداول
-{
+namespace PharmacyAPI.Models  
     public class Order
     {
         public int Id { get; set; }
