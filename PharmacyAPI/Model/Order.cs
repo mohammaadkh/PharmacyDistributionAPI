@@ -1,7 +1,7 @@
 ﻿using PharmacyAPI.Model;
 using PharmacyAPI.Models;
 
-namespace PharmacyAPI.Models  
+namespace PharmacyAPI.Models;
     public class Order
     {
         public int Id { get; set; }
@@ -17,4 +17,4 @@ namespace PharmacyAPI.Models
         // ربط الفاتورة بتفاصيلها (الأدوية المشتراة)
         public List<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();
     }
-}
+

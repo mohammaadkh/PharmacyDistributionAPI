@@ -1,5 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using PharmacyAPI.Models; // أضف حرف الـ s هنا لتطابق اسم المجلد والـ Namespace الجديد
+using Microsoft.EntityFrameworkCore;        
+using PharmacyAPI.Data; 
+using PharmacyAPI.Models;
 
 namespace PharmacyAPI.Controllers
 {
@@ -7,19 +9,28 @@ namespace PharmacyAPI.Controllers
     [ApiController]
     public class MedicinesController : ControllerBase
     {
-        // قائمة تجريبية للأدوية
-        // لاحظ أننا أضفنا الحقول الجديدة (Description, ImageUrl, CategoryId) لتطابق الكلاس المطور
-        private static List<Medicine> myMedicines = new List<Medicine>
-        {
-            new Medicine { Id = 1, Name = "Panadol", Price = 15.5m, Quantity = 100, Description = "Pain killer", CategoryId = 1 },
-            new Medicine { Id = 2, Name = "Aspirin", Price = 8.0m, Quantity = 50, Description = "Blood thinner", CategoryId = 1 }
-        };
+        private readonly AppDbContext _context;
 
-        [HttpGet]
-        public IActionResult Get()
+        // "Constructor" لجلب قاعدة البيانات للمتحكم
+        public MedicinesController(AppDbContext context)
         {
-            return Ok(myMedicines);
+            _context = context;
+        }
+
+        // 1. جلب كل الأدوية من قاعدة البيانات
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<Medicine>>> GetMedicines()
+        {
+            return await _context.Medicines.ToListAsync();
+        }
+
+        // 2. إضافة دواء جديد للقاعدة
+        [HttpPost]
+        public async Task<ActionResult<Medicine>> PostMedicine(Medicine medicine)
+        {
+            _context.Medicines.Add(medicine);
+            await _context.SaveChangesAsync();
+            return Ok(medicine);
         }
     }
 }
- 
