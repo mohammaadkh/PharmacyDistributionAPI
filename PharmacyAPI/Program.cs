@@ -4,7 +4,10 @@ using PharmacyAPI.Data; // ÊÃßÏ Ãä ÇáãÓÇÑ ÕÍíÍ
 var builder = WebApplication.CreateBuilder(args);
 
 // ÃÖÝ åÐå ÇáÃÓØÑ åäÇ ÞÈá builder.Build
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 

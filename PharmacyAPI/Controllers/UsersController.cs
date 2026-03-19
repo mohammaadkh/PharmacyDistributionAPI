@@ -10,26 +10,27 @@ namespace PharmacyAPI.Controllers
     public class UsersController : ControllerBase
     {
         private readonly AppDbContext _context;
+        public UsersController(AppDbContext context) { _context = context; }
 
-        public UsersController(AppDbContext context)
-        {
-            _context = context;
-        }
-
-        // جلب قائمة المستخدمين (للتأكد فقط)
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<User>>> GetUsers()
-        {
-            return await _context.Users.ToListAsync();
-        }
+        public async Task<ActionResult<IEnumerable<User>>> GetUsers() => await _context.Users.ToListAsync();
 
-        // تسجيل مستخدم جديد (Register)
         [HttpPost("register")]
         public async Task<ActionResult<User>> Register(User user)
         {
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
             return Ok(user);
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteUser(int id)
+        {
+            var user = await _context.Users.FindAsync(id);
+            if (user == null) return NotFound();
+            _context.Users.Remove(user);
+            await _context.SaveChangesAsync();
+            return NoContent();
         }
     }
 }
