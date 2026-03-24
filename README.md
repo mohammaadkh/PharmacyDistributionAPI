@@ -13,7 +13,6 @@ I am a passionate Backend Developer specializing in building scalable and effici
 - Pharmacy B2B System: Developing a comprehensive backend solution for pharmacy management and distribution.
 ---
 ### 📫 Connect with me
-LinkedIn : (https://www.linkedin.com/in/mouhmmad-fhussx-2729573ab?
-utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app) 
+LinkedIn : (https://www.linkedin.com/in/mouhmmad-fhussx-2729573ab) 
 
  Email : (mohama12324253fggf4@gmail.com)
