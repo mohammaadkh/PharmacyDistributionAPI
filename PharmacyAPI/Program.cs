@@ -1,33 +1,50 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using PharmacyAPI.Data; // ÊÃßÏ Ãä ÇáãÓÇÑ ÕÍíÍ
+using Microsoft.IdentityModel.Tokens;
+using PharmacyAPI.Data; // ÊÃßÏ Ãä åĞÇ ÇáãÓÇÑ íØÇÈŞ ãÌáÏ ÇáÈíÇäÇÊ ÚäÏß
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ÃÖİ åĞå ÇáÃÓØÑ åäÇ ŞÈá builder.Build
+// 1. ÑÈØ ŞÇÚÏÉ ÇáÈíÇäÇÊ SQL Server
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// 2. ÅÚÏÇÏÇÊ ÇáÜ JSON (áÍãÇíÉ ÇáÚáÇŞÇÊ ÇáÏÇÆÑíÉ)
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
 });
-// 1. ÊÚÑíİ ÇáÓíÇÓÉ (Policy)
+
+// 3. ÊÚÑíİ ÓíÇÓÉ ÇáÜ CORS (ÚÔÇä ÑİíŞß íŞÏÑ íÓÍÈ ÈíÇäÇÊ ãä ÇáÜ Frontend)
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll",
-        builder =>
-        {
-            builder.AllowAnyOrigin()
-                   .AllowAnyMethod()
-                   .AllowAnyHeader();
-        });
+    options.AddPolicy("AllowAll", b => b.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
+
+// 4. ÅÚÏÇÏÇÊ äÙÇã ÇáÃãÇä JWT Authentication
+var jwtKey = builder.Configuration["Jwt:Key"];
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+    });
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// ÊÃßÏ ãä æÌæÏ åĞÇ ÇáÓØÑ ææÖæÍå
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
 var app = builder.Build();
-// Configure the HTTP request pipeline.
+
+// 5. ÅÚÏÇÏÇÊ ÎØ ÇáÚãá (Middleware Pipeline) - ÇáÊÑÊíÈ åæä "ãŞÏÓ"
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -35,9 +52,12 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-// 2. ÊİÚíá ÇáÓíÇÓÉ İí ÇáÊØÈíŞ
+
+// ÊİÚíá ÇáÜ CORS ÃæáÇğ
 app.UseCors("AllowAll");
 
+// ÊİÚíá äÙÇã ÇáÊÍŞŞ ãä ÇáåæíÉ ( Authentication ŞÈá Authorization)
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
