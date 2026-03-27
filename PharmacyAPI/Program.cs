@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using PharmacyAPI.Data; // ÊÃßÏ Ãä åĞÇ ÇáãÓÇÑ íØÇÈŞ ãÌáÏ ÇáÈíÇäÇÊ ÚäÏß
+using PharmacyAPI.Data;
+using PharmacyAPI.Models;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,13 +11,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// 2. ÅÚÏÇÏÇÊ ÇáÜ JSON (áÍãÇíÉ ÇáÚáÇŞÇÊ ÇáÏÇÆÑíÉ)
+// 2. ÅÚÏÇÏÇÊ ÇáÜ JSON (áÍãÇíÉ ÇáÚáÇŞÇÊ ÇáÏÇÆÑíÉ ÚÔÇä ÇáãíÏíÓä æÇáßÇÊíÌæÑí)
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
 });
 
-// 3. ÊÚÑíİ ÓíÇÓÉ ÇáÜ CORS (ÚÔÇä ÑİíŞß íŞÏÑ íÓÍÈ ÈíÇäÇÊ ãä ÇáÜ Frontend)
+// 3. ÊÚÑíİ ÓíÇÓÉ ÇáÜ CORS (ÚÔÇä ÑİíŞß íÑÈØ ãä ÇáÜ Frontend ÈÏæä ãÔÇßá)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", b => b.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
@@ -24,6 +25,8 @@ builder.Services.AddCors(options =>
 
 // 4. ÅÚÏÇÏÇÊ äÙÇã ÇáÃãÇä JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrEmpty(jwtKey)) jwtKey = "YourSuperSecretKey1234567890123456"; // ãİÊÇÍ ÇÍÊíÇØí ááØæÇÑÆ
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -53,13 +56,48 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// ÊİÚíá ÇáÜ CORS ÃæáÇğ
+// ÊİÚíá ÇáãáİÇÊ ÇáËÇÈÊÉ (ÚÔÇä ÕæÑ ÇáÃÏæíÉ ÈãÌáÏ wwwroot ÊÙåÑ)
+app.UseStaticFiles();
+
+// ÊİÚíá ÇáÜ CORS
 app.UseCors("AllowAll");
 
-// ÊİÚíá äÙÇã ÇáÊÍŞŞ ãä ÇáåæíÉ ( Authentication ŞÈá Authorization)
+// ÊİÚíá äÙÇã ÇáÊÍŞŞ ãä ÇáåæíÉ
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// 6. ÊÚÈÆÉ ÈíÇäÇÊ ÊÌÑíÈíÉ (Seed Data) Ãæá ãÇ íÔÊÛá ÇáãÔÑæÚ
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    // ÊÃßÏ Åä ŞÇÚÏÉ ÇáÈíÇäÇÊ æÇáÌÏæá ãæÌæÏíä
+    context.Database.EnsureCreated();
+
+    // ÅÖÇİÉ Õäİ ÊÌÑíÈí ÅĞÇ ÇáÌÏæá İÇÖí
+    if (!context.Categories.Any())
+    {
+        context.Categories.Add(new Category { Name = "Pain Relief" });
+        context.SaveChanges();
+    }
+
+    // ÅÖÇİÉ Ãæá ÏæÇÁ (ÈÇäÏæá) ãÑÈæØ ÈÇáÕäİ
+    if (!context.Medicines.Any())
+    {
+        var category = context.Categories.First();
+        context.Medicines.Add(new Medicine
+        {
+            Name = "Panadol",
+            Description = "Effective and fast pain relief",
+            Price = 15.5m,
+            Quantity = 100,
+            CategoryId = category.Id,
+            ImageUrl = "/images/default.png"
+        });
+        context.SaveChanges();
+    }
+}
 
 app.Run();

@@ -16,23 +16,39 @@ namespace PharmacyAPI.Controllers
             _context = context;
         }
 
-        // GET: api/Medicines (عرض كل الأدوية)
+        // GET: api/Medicines
+        // أضفت معاملات (search) و (categoryId) لخدمة الواجهة
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Medicine>>> GetMedicines()
+        public async Task<ActionResult<IEnumerable<Medicine>>> GetMedicines(string? search, int? categoryId)
         {
-            return await _context.Medicines.Include(m => m.Category).ToListAsync();
+            var query = _context.Medicines.Include(m => m.Category).AsQueryable();
+
+            // إذا رفيقك بعت كلمة بحث
+            if (!string.IsNullOrEmpty(search))
+            {
+                query = query.Where(m => m.Name.Contains(search));
+            }
+
+            // إذا رفيقك ضغط على صنف معين
+            if (categoryId.HasValue)
+            {
+                query = query.Where(m => m.CategoryId == categoryId.Value);
+            }
+
+            return await query.ToListAsync();
         }
 
-        // GET: api/Medicines/5 (عرض دواء واحد بالرقم)
+        // الباقي بضل متل ما هو (GetByID, Post, Put, Delete)
         [HttpGet("{id}")]
         public async Task<ActionResult<Medicine>> GetMedicine(int id)
         {
-            var medicine = await _context.Medicines.FindAsync(id);
+            // استخدمت Include هون كمان عشان تفاصيل الدواء تطلع مع اسم الصنف
+            var medicine = await _context.Medicines.Include(m => m.Category).FirstOrDefaultAsync(m => m.Id == id);
+
             if (medicine == null) return NotFound();
             return medicine;
         }
 
-        // POST: api/Medicines (إضافة دواء جديد)
         [HttpPost]
         public async Task<ActionResult<Medicine>> PostMedicine(Medicine medicine)
         {
@@ -41,7 +57,6 @@ namespace PharmacyAPI.Controllers
             return CreatedAtAction("GetMedicine", new { id = medicine.Id }, medicine);
         }
 
-        // PUT: api/Medicines/5 (تعديل دواء موجود)
         [HttpPut("{id}")]
         public async Task<IActionResult> PutMedicine(int id, Medicine medicine)
         {
@@ -51,7 +66,6 @@ namespace PharmacyAPI.Controllers
             return NoContent();
         }
 
-        // DELETE: api/Medicines/5 (حذف دواء)
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteMedicine(int id)
         {
