@@ -17,17 +17,11 @@ namespace PharmacyAPI.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            // 1. ضبط دقة الأرقام العشرية لجدول الأدوية (Price)
-            modelBuilder.Entity<Medicine>()
-                .Property(m => m.Price)
-                .HasPrecision(18, 2);
+            // --- 1. ضبط دقة الأرقام المالية (Decimal Precision) ---
+            // لضمان دقة الفواصل العشرية وتطابقها مع واجهة رفيقك
+            modelBuilder.Entity<Medicine>().Property(m => m.Price).HasPrecision(18, 2);
+            modelBuilder.Entity<OrderDetail>().Property(m => m.PriceAtPurchase).HasPrecision(18, 2);
 
-            // 2. ضبط دقة السعر وقت الشراء في تفاصيل الطلب
-            modelBuilder.Entity<OrderDetail>()
-                .Property(m => m.PriceAtPurchase)
-                .HasPrecision(18, 2);
-
-            // 3. إضافة ضبط الدقة للضرائب ومصاريف الشحن (لضمان تطابق الفاتورة)
             modelBuilder.Entity<Order>(entity =>
             {
                 entity.Property(o => o.Subtotal).HasPrecision(18, 2);
@@ -36,11 +30,36 @@ namespace PharmacyAPI.Data
                 entity.Property(o => o.TotalAmount).HasPrecision(18, 2);
             });
 
-            // 4. (إضافي) منع حذف الصنف إذا كان يحتوي على أدوية (أمان البيانات)
+            // --- 2. حماية البيانات من الحذف التلقائي (Restrict Delete) ---
+
+            // أ- منع حذف الصنف إذا كان يحتوي على أدوية
             modelBuilder.Entity<Category>()
                 .HasMany(c => c.Medicines)
                 .WithOne(m => m.Category)
                 .HasForeignKey(m => m.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ب- حماية السلة: إذا انحذف المستخدم، لا نريد حذف عناصر السلة أوتوماتيكياً (اختياري للأرشفة) 
+            // أو إذا انحذف دواء وهو موجود بسلة حدا، السيستم بيمنع الحذف عشان ما تضيع السلة
+            modelBuilder.Entity<CartItem>()
+                .HasOne(ci => ci.Medicine)
+                .WithMany()
+                .HasForeignKey(ci => ci.MedicineId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ج- حماية الفواتير (أهم نقطة): منع حذف الدواء إذا كان مرتبطاً بطلب سابق (OrderDetail)
+            // هاد بيضمن إنو "سجل المبيعات" بضل سليم حتى لو الدواء انحذف من المتجر
+            modelBuilder.Entity<OrderDetail>()
+                .HasOne(od => od.Medicine)
+                .WithMany()
+                .HasForeignKey(od => od.MedicineId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // د- منع حذف الطلب بالكامل بمجرد حذف المستخدم (لأغراض المحاسبة)
+            modelBuilder.Entity<Order>()
+                .HasOne<User>()
+                .WithMany()
+                .HasForeignKey(o => o.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             base.OnModelCreating(modelBuilder);

@@ -12,8 +12,8 @@ using PharmacyAPI.Data;
 namespace PharmacyAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260329111054_NameOfMigration")]
-    partial class NameOfMigration
+    [Migration("20260329173541_InitialCreateV2")]
+    partial class InitialCreateV2
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -47,6 +47,8 @@ namespace PharmacyAPI.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("MedicineId");
 
                     b.HasIndex("OrderId");
 
@@ -177,9 +179,14 @@ namespace PharmacyAPI.Migrations
                     b.Property<int>("UserId")
                         .HasColumnType("int");
 
+                    b.Property<int>("UserId1")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("UserId1");
 
                     b.ToTable("Orders");
                 });
@@ -219,11 +226,21 @@ namespace PharmacyAPI.Migrations
 
             modelBuilder.Entity("PharmacyAPI.Model.OrderDetail", b =>
                 {
-                    b.HasOne("PharmacyAPI.Models.Order", null)
+                    b.HasOne("PharmacyAPI.Models.Medicine", "Medicine")
+                        .WithMany()
+                        .HasForeignKey("MedicineId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PharmacyAPI.Models.Order", "Order")
                         .WithMany("OrderDetails")
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Medicine");
+
+                    b.Navigation("Order");
                 });
 
             modelBuilder.Entity("PharmacyAPI.Models.CartItem", b =>
@@ -231,7 +248,7 @@ namespace PharmacyAPI.Migrations
                     b.HasOne("PharmacyAPI.Models.Medicine", "Medicine")
                         .WithMany()
                         .HasForeignKey("MedicineId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("PharmacyAPI.Models.User", "User")
@@ -258,9 +275,15 @@ namespace PharmacyAPI.Migrations
 
             modelBuilder.Entity("PharmacyAPI.Models.Order", b =>
                 {
+                    b.HasOne("PharmacyAPI.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("PharmacyAPI.Models.User", "User")
                         .WithMany("Orders")
-                        .HasForeignKey("UserId")
+                        .HasForeignKey("UserId1")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
