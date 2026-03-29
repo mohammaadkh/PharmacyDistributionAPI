@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using PharmacyAPI.Data;
 using PharmacyAPI.Models;
 using System.Text;
@@ -11,21 +12,23 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// 2. ÅÚÏÇÏÇÊ ÇáÜ JSON (áÍãÇíÉ ÇáÚáÇŞÇÊ ÇáÏÇÆÑíÉ ÚÔÇä ÇáãíÏíÓä æÇáßÇÊíÌæÑí)
+// 2. ÅÚÏÇÏÇÊ ÇáÜ JSON áÍãÇíÉ ÇáÚáÇŞÇÊ ÇáÏÇÆÑíÉ
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
 });
 
-// 3. ÊÚÑíİ ÓíÇÓÉ ÇáÜ CORS (ÚÔÇä ÑİíŞß íÑÈØ ãä ÇáÜ Frontend ÈÏæä ãÔÇßá)
+// 3. ÊÚÑíİ ÓíÇÓÉ ÇáÜ CORS ááÑÈØ ãÚ ÇáİÑæäÊ-ÂäÏ
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", b => b.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
 
-// 4. ÅÚÏÇÏÇÊ äÙÇã ÇáÃãÇä JWT Authentication
+// 4. ÅÚÏÇÏÇÊ äÙÇã ÇáÃãÇä JWT Authentication (ÊÚÏíá ÌæåÑí åæä)
+// ÓÍÈäÇ ÇáŞíã ãÈÇÔÑÉ ãä appsettings.json áÖãÇä ÇáÊØÇÈŞ
 var jwtKey = builder.Configuration["Jwt:Key"];
-if (string.IsNullOrEmpty(jwtKey)) jwtKey = "YourSuperSecretKey1234567890123456"; // ãİÊÇÍ ÇÍÊíÇØí ááØæÇÑÆ
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+var jwtAudience = builder.Configuration["Jwt:Audience"];
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -36,18 +39,45 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
+// 5. ÅÚÏÇÏÇÊ Swagger ãÚ ÅÖÇİÉ ãíÒÉ ÇáÜ Authorize (ÇáŞİá)
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "ÏÎá ÇáÊæßä åæä: ÇßÊÈ Bearer Ëã ãÓØÑÉ æÈÚÏåÇ ÇáÊæßä"
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            new string[] {}
+        }
+    });
+});
 
 var app = builder.Build();
 
-// 5. ÅÚÏÇÏÇÊ ÎØ ÇáÚãá (Middleware Pipeline) - ÇáÊÑÊíÈ åæä "ãŞÏÓ"
+// 6. ÅÚÏÇÏÇÊ ÎØ ÇáÚãá (Middleware)
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -55,35 +85,26 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-// ÊİÚíá ÇáãáİÇÊ ÇáËÇÈÊÉ (ÚÔÇä ÕæÑ ÇáÃÏæíÉ ÈãÌáÏ wwwroot ÊÙåÑ)
 app.UseStaticFiles();
-
-// ÊİÚíá ÇáÜ CORS
 app.UseCors("AllowAll");
 
-// ÊİÚíá äÙÇã ÇáÊÍŞŞ ãä ÇáåæíÉ
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// 6. ÊÚÈÆÉ ÈíÇäÇÊ ÊÌÑíÈíÉ (Seed Data) Ãæá ãÇ íÔÊÛá ÇáãÔÑæÚ
+// 7. ÊÚÈÆÉ ÈíÇäÇÊ ÊÌÑíÈíÉ (Seed Data)
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-    // ÊÃßÏ Åä ŞÇÚÏÉ ÇáÈíÇäÇÊ æÇáÌÏæá ãæÌæÏíä
     context.Database.EnsureCreated();
 
-    // ÅÖÇİÉ Õäİ ÊÌÑíÈí ÅĞÇ ÇáÌÏæá İÇÖí
     if (!context.Categories.Any())
     {
         context.Categories.Add(new Category { Name = "Pain Relief" });
         context.SaveChanges();
     }
 
-    // ÅÖÇİÉ Ãæá ÏæÇÁ (ÈÇäÏæá) ãÑÈæØ ÈÇáÕäİ
     if (!context.Medicines.Any())
     {
         var category = context.Categories.First();
