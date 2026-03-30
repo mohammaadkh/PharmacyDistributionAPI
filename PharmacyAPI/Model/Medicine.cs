@@ -1,4 +1,7 @@
-﻿namespace PharmacyAPI.Models
+﻿using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.AspNetCore.Http;
+
+namespace PharmacyAPI.Models
 {
     public class Medicine
     {
@@ -10,20 +13,29 @@
 
         public decimal Price { get; set; }
 
-        // تم تغيير الاسم لـ StockQuantity لتعبر عن المخزون بالمستودع
         public int StockQuantity { get; set; }
 
-        public string ImageUrl { get; set; } = "/images/default.png";
+        // هاد الحقل بضل متل ما هو لتخزين مسار الصورة النهائي في قاعدة البيانات
+        public string ? ImageUrl { get; set; } = "/images/default.png";
 
-        // --- التعديلات الجديدة المطابقة للواجهة ---
+        // --- التعديل الجديد لرفع الصور ---
+        [NotMapped] // هاد الوسم ضروري جداً عشان ما يضيف عمود بالداتا بيز للملف نفسه
+        public IFormFile? ImageFile { get; set; }
 
-        // كود المنتج الفريد الظاهر تحت اسم الدواء في السلة
         public string SKU { get; set; } = string.Empty;
 
-        // لإظهار العلامة الخضراء (FDA Approved)
+        // --- تفاصيل البطاقة في الواجهة ---
+        public string Dosage { get; set; } = string.Empty;
+
+        public string Manufacturer { get; set; } = string.Empty;
+
+        public string PackSize { get; set; } = string.Empty;
+
+        // --- الأوسمة والشارات (Badges) ---
         public bool IsFdaApproved { get; set; }
 
-        // لإظهار العلامة الزرقاء (Cold Chain Required) للأدوية التي تحتاج تبريد
+        public bool IsGmpCertified { get; set; }
+
         public bool IsColdChain { get; set; }
 
         // --- الربط مع جدول الأصناف ---
