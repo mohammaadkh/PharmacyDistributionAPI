@@ -18,7 +18,6 @@ namespace PharmacyAPI.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             // --- 1. ضبط دقة الأرقام المالية (Decimal Precision) ---
-            // لضمان حساب الكسور بدقة في الأسعار والفواتير وتجنب أخطاء التقريب
             modelBuilder.Entity<Medicine>().Property(m => m.Price).HasPrecision(18, 2);
             modelBuilder.Entity<OrderDetail>().Property(m => m.PriceAtPurchase).HasPrecision(18, 2);
 
@@ -30,45 +29,43 @@ namespace PharmacyAPI.Data
                 entity.Property(o => o.TotalAmount).HasPrecision(18, 2);
             });
 
-            // --- 2. إعدادات الحقول الجديدة لمطابقة الواجهة (Constraints) ---
+            // --- 2. إعدادات قيود الحقول (Constraints) ---
             modelBuilder.Entity<Medicine>(entity =>
             {
-                // إجبار النظام على وجود هذه القيم لمنع حدوث مشاكل في عرض واجهة المستخدم
                 entity.Property(m => m.Dosage).IsRequired().HasMaxLength(50);
                 entity.Property(m => m.Manufacturer).IsRequired().HasMaxLength(100);
                 entity.Property(m => m.PackSize).HasMaxLength(50);
                 entity.Property(m => m.SKU).IsRequired().HasMaxLength(50);
             });
 
-            // --- 3. حماية البيانات من الحذف التلقائي (Restrict Delete) ---
-            // ملاحظة: هذه القواعد تضمن بقاء سجلات الصيدلية سليمة حتى عند محاولة حذف عناصر مرتبطة
+            // --- 3. إدارة العلاقات وحماية البيانات من الحذف (Relationships & Restrict Delete) ---
 
-            // أ- منع حذف الصنف (Category) إذا كان يضم أدوية
+            // أ- ربط الصنف بالأدوية (منع حذف صنف يحتوي أدوية)
             modelBuilder.Entity<Category>()
                 .HasMany(c => c.Medicines)
                 .WithOne(m => m.Category)
                 .HasForeignKey(m => m.CategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // ب- حماية السلة: منع حذف الدواء إذا كان مضافاً لسلة أي مستخدم حالياً
+            // ب- ربط المستخدم بالطلبات (حل مشكلة UserId1 وضمان بقاء السجلات المالية)
+            modelBuilder.Entity<Order>()
+                .HasOne(o => o.User)
+                .WithMany(u => u.Orders)
+                .HasForeignKey(o => o.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ج- ربط السلة بالدواء (منع حذف دواء موجود في سلة مستخدم)
             modelBuilder.Entity<CartItem>()
                 .HasOne(ci => ci.Medicine)
                 .WithMany()
                 .HasForeignKey(ci => ci.MedicineId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // ج- حماية الأرشيف: منع حذف الدواء إذا كان مسجلاً في فاتورة قديمة (OrderDetail)
+            // د- ربط تفاصيل الطلب بالدواء (حماية أرشيف المبيعات)
             modelBuilder.Entity<OrderDetail>()
                 .HasOne(od => od.Medicine)
                 .WithMany()
                 .HasForeignKey(od => od.MedicineId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            // د- حماية المحاسبة: منع حذف الطلبات (Orders) المرتبطة بمستخدم، لضمان صحة التقارير المالية
-            modelBuilder.Entity<Order>()
-                .HasOne<User>()
-                .WithMany()
-                .HasForeignKey(o => o.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             base.OnModelCreating(modelBuilder);

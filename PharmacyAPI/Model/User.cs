@@ -1,18 +1,18 @@
-﻿using System.Collections.Generic;
-
-namespace PharmacyAPI.Models
+﻿namespace PharmacyAPI.Models
 {
     public class User
     {
         public int Id { get; set; }
         public string FullName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
-        public string PhoneNumber { get; set; }
+        public string PasswordHash { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
         public string Role { get; set; } = "Customer";
 
-       
-        public List<Order> Orders { get; set; } = new List<Order>();
-        public List<CartItem> CartItems { get; set; } = new List<CartItem>();
+        public string? ResetToken { get; set; }
+        public DateTime? ResetTokenExpiry { get; set; }
+
+        public List<Order> Orders { get; set; } = new();
+        public List<CartItem> CartItems { get; set; } = new();
     }
 }

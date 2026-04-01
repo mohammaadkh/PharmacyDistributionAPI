@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using PharmacyAPI.Data;
 using PharmacyAPI.Models;
+using PharmacyAPI.Services;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,7 +19,7 @@ builder.Services.AddControllers().AddJsonOptions(options =>
     options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
 });
 
-// 3.  ⁄—Ì› ”Ì«”… «·‹ CORS ·÷„«‰ « ’«· ›—Ê‰ -≈‰œ (React) »œÊ‰ „‘«ﬂ·
+// 3.  ⁄—Ì› ”Ì«”… «·‹ CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", b => b.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
@@ -49,7 +50,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// 5. ≈⁄œ«œ«  Swagger ·œ⁄„ «Œ »«— «· Êﬂ‰
+// 5. ≈⁄œ«œ«  Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -75,31 +76,31 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
+// 6.  ”ÃÌ· «·‹ EmailService
+builder.Services.AddSingleton<EmailService>();
+
 var app = builder.Build();
 
-// 6.  — Ì» «·‹ Middleware
+// 7.  — Ì» «·‹ Middleware
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-app.UseStaticFiles(); // Â–« «·”ÿ— Ì”„Õ »«·Ê’Ê· ·„Ã·œ wwwroot
-app.UseHttpsRedirection();
-app.UseStaticFiles();
-app.UseCors("AllowAll");
 
+app.UseStaticFiles();
+app.UseHttpsRedirection();
+app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
-// 7.  ÕœÌÀ «·»Ì«‰«  «· Ã—Ì»Ì… (Seed Data) · ÿ«»ﬁ «·Ê«ÃÂ… 100%
+// 8. Seed Data
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     context.Database.EnsureCreated();
 
-    // ≈÷«›… «·√’‰«›
     if (!context.Categories.Any())
     {
         context.Categories.AddRange(
@@ -110,7 +111,6 @@ using (var scope = app.Services.CreateScope())
         context.SaveChanges();
     }
 
-    // ≈÷«›… «·√œÊÌ… „⁄ «·ÕﬁÊ· «·ÃœÌœ… («·Ã—⁄…° «·‘—ﬂ…° «·⁄»Ê…)
     if (!context.Medicines.Any())
     {
         var categories = context.Categories.ToList();
@@ -138,7 +138,7 @@ using (var scope = app.Services.CreateScope())
                 PackSize = "500 Tablets",
                 SKU = "PH-LIS-010-500CT",
                 Price = 15.20m,
-                StockQuantity = 12, // ÌŸÂ—  ‰»ÌÂ Low Stock
+                StockQuantity = 12,
                 IsFdaApproved = true,
                 IsGmpCertified = true,
                 CategoryId = categories.First(c => c.Name == "Cardiology").Id,
