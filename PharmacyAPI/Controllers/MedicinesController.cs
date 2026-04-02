@@ -4,10 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using PharmacyAPI.Data;
 using PharmacyAPI.Models;
 using PharmacyAPI.Models.DTOs;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using System.Linq;
-using System.IO; // ضرورية للتعامل مع الملفات
 
 namespace PharmacyAPI.Controllers
 {
@@ -16,7 +12,7 @@ namespace PharmacyAPI.Controllers
     public class MedicinesController : ControllerBase
     {
         private readonly AppDbContext _context;
-        private readonly IWebHostEnvironment _environment; // لإدارة مسارات السيرفر
+        private readonly IWebHostEnvironment _environment;
 
         public MedicinesController(AppDbContext context, IWebHostEnvironment environment)
         {
@@ -24,7 +20,7 @@ namespace PharmacyAPI.Controllers
             _environment = environment;
         }
 
-        // --- 1. جلب الأدوية (متاحة للجميع) ---
+        // --- 1. جلب الأدوية مع البحث والفلترة ---
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Medicine>>> GetMedicines(string? search, int? categoryId)
         {
@@ -38,33 +34,47 @@ namespace PharmacyAPI.Controllers
             }
 
             if (categoryId.HasValue)
-            {
                 query = query.Where(m => m.CategoryId == categoryId.Value);
-            }
 
             return await query.ToListAsync();
         }
 
-        // --- 2. جلب تفاصيل المنتج العميقة (للواجهة الاحترافية) ---
+        // --- 2. جلب تفاصيل دواء معين ---
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Medicine>> GetMedicine(int id)
+        {
+            var medicine = await _context.Medicines
+                .Include(m => m.Category)
+                .FirstOrDefaultAsync(m => m.Id == id);
+
+            if (medicine == null)
+                return NotFound(new { message = "عذراً، هذا الدواء غير موجود!" });
+
+            return medicine;
+        }
+
+        // --- 3. جلب التفاصيل العميقة للواجهة ---
         [HttpGet("{id}/details")]
         [AllowAnonymous]
         public async Task<ActionResult<ProductDetailsDto>> GetProductDetails(int id)
         {
-            if (id <= 0) return BadRequest(new { message = "معرف المنتج غير صالح" });
+            if (id <= 0)
+                return BadRequest(new { message = "خطأ: معرف المنتج غير صالح!" });
 
             var medicine = await _context.Medicines
                 .AsNoTracking()
                 .Include(m => m.Category)
                 .FirstOrDefaultAsync(m => m.Id == id);
 
-            if (medicine == null) return NotFound(new { message = "عذراً، هذا المنتج غير متوفر حالياً" });
+            if (medicine == null)
+                return NotFound(new { message = "عذراً، هذا المنتج غير متوفر حالياً!" });
 
             var details = new ProductDetailsDto
             {
                 Id = medicine.Id,
                 Name = medicine.Name,
                 Description = medicine.Description ?? "لا يوجد وصف طبي متوفر حالياً.",
-                NdcNumber = "50458-578-01",
+                NdcNumber = medicine.NdcNumber ?? "غير متوفر",
                 ManufacturerName = medicine.Manufacturer,
                 CategoryName = medicine.Category?.Name ?? "General",
                 StorageCondition = medicine.IsColdChain ? "2°C - 8°C" : "20°C - 25°C",
@@ -73,53 +83,49 @@ namespace PharmacyAPI.Controllers
                 ImageUrl = medicine.ImageUrl,
                 IsFdaApproved = medicine.IsFdaApproved,
                 IsColdChain = medicine.IsColdChain,
-                BlackBoxWarning = "تحذير: زيادة خطر الوفاة لدى المرضى المسنين المصابين بذهان متعلق بالخرف.",
-                ClinicalSpecs = new List<string> {
-                    "Pharmacotherapeutic group: Psycholeptics",
-                    "Active ingredient: Paliperidone Palmitate",
-                    "Extended-release injectable suspension"
-                }
+                BlackBoxWarning = medicine.BlackBoxWarning ?? "لا يوجد تحذير خاص بهذا الدواء",
+                ClinicalSpecs = string.IsNullOrEmpty(medicine.ClinicalSpecs)
+                    ? new List<string>()
+                    : medicine.ClinicalSpecs.Split(',').ToList()
             };
 
             return Ok(details);
         }
 
-        // --- 3. إضافة دواء جديد مع رفع صورة حقيقية (للمشرف فقط) ---
+        // --- 4. إضافة دواء جديد (Admin فقط) ---
         [HttpPost]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<Medicine>> PostMedicine([FromForm] Medicine medicine)
         {
-            if (!User.IsInRole("Admin"))
-                return StatusCode(403, new { message = "عذراً، لا يمكن إلا للمشرف (Admin) إضافة أدوية جديدة." });
-
             if (medicine.Price <= 0)
                 return BadRequest(new { message = "خطأ: السعر يجب أن يكون قيمة موجبة!" });
 
-            // منطق رفع الصورة الحقيقية
+            if (string.IsNullOrWhiteSpace(medicine.Name))
+                return BadRequest(new { message = "خطأ: اسم الدواء مطلوب!" });
+
             if (medicine.ImageFile != null)
-            {
                 medicine.ImageUrl = await SaveImage(medicine.ImageFile);
-            }
 
             _context.Medicines.Add(medicine);
             await _context.SaveChangesAsync();
-            return CreatedAtAction("GetMedicine", new { id = medicine.Id }, medicine);
+            return CreatedAtAction(nameof(GetMedicine), new { id = medicine.Id }, medicine);
         }
 
-        // --- 4. تحديث بيانات دواء وصورته (للمشرف فقط) ---
+        // --- 5. تعديل دواء (Admin فقط) ---
         [HttpPut("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> PutMedicine(int id, [FromForm] Medicine medicine)
         {
-            if (!User.IsInRole("Admin"))
-                return StatusCode(403, new { message = "تعديل البيانات متاح فقط للمشرف المسؤول." });
+            if (id != medicine.Id)
+                return BadRequest(new { message = "خطأ: معرف الدواء غير متطابق!" });
 
-            if (id != medicine.Id) return BadRequest();
+            var existingMedicine = await _context.Medicines
+                .AsNoTracking()
+                .FirstOrDefaultAsync(m => m.Id == id);
 
-            var existingMedicine = await _context.Medicines.AsNoTracking().FirstOrDefaultAsync(m => m.Id == id);
-            if (existingMedicine == null) return NotFound();
+            if (existingMedicine == null)
+                return NotFound(new { message = "عذراً، الدواء المطلوب تعديله غير موجود!" });
 
-            // إذا رفع المستخدم صورة جديدة، نحذف القديمة ونرفع الجديدة
             if (medicine.ImageFile != null)
             {
                 DeleteOldImage(existingMedicine.ImageUrl);
@@ -127,7 +133,7 @@ namespace PharmacyAPI.Controllers
             }
             else
             {
-                medicine.ImageUrl = existingMedicine.ImageUrl; // الحفاظ على الرابط القديم إذا لم تُرفع صورة
+                medicine.ImageUrl = existingMedicine.ImageUrl;
             }
 
             _context.Entry(medicine).State = EntityState.Modified;
@@ -135,31 +141,38 @@ namespace PharmacyAPI.Controllers
             try { await _context.SaveChangesAsync(); }
             catch (DbUpdateConcurrencyException)
             {
-                if (!MedicineExists(id)) return NotFound();
+                if (!MedicineExists(id))
+                    return NotFound(new { message = "عذراً، الدواء لم يعد موجوداً!" });
                 else throw;
             }
+
             return NoContent();
         }
 
-        // --- 5. حذف دواء وحذف صورته من السيرفر ---
+        // --- 6. حذف دواء (Admin فقط) ---
         [HttpDelete("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteMedicine(int id)
         {
-            if (!User.IsInRole("Admin"))
-                return StatusCode(403, new { message = "عملية الحذف نهائية ومتاحة للإدارة فقط." });
-
             var medicine = await _context.Medicines.FindAsync(id);
-            if (medicine == null) return NotFound();
+            if (medicine == null)
+                return NotFound(new { message = "عذراً، الدواء المطلوب حذفه غير موجود!" });
 
-            DeleteOldImage(medicine.ImageUrl); // حذف الملف من المجلد عند حذف الدواء
+            var isInCart = await _context.CartItems.AnyAsync(c => c.MedicineId == id);
+            if (isInCart)
+                return BadRequest(new { message = "لا يمكن حذف هذا الدواء لأنه موجود في سلة مستخدم حالياً!" });
 
+            var isInOrder = await _context.OrderDetails.AnyAsync(o => o.MedicineId == id);
+            if (isInOrder)
+                return BadRequest(new { message = "لا يمكن حذف هذا الدواء لأنه مرتبط بفاتورة سابقة!" });
+
+            DeleteOldImage(medicine.ImageUrl);
             _context.Medicines.Remove(medicine);
             await _context.SaveChangesAsync();
             return NoContent();
         }
 
-        // --- وظائف مساعدة (Helper Methods) لرفع الصور ---
+        // --- Helper Methods ---
         private async Task<string> SaveImage(IFormFile file)
         {
             string folderPath = Path.Combine(_environment.WebRootPath, "images");
@@ -172,10 +185,11 @@ namespace PharmacyAPI.Controllers
             {
                 await file.CopyToAsync(stream);
             }
+
             return "/images/" + fileName;
         }
 
-        private void DeleteOldImage(string imageUrl)
+        private void DeleteOldImage(string? imageUrl)
         {
             if (string.IsNullOrEmpty(imageUrl) || imageUrl.Contains("default.png")) return;
 
@@ -183,17 +197,6 @@ namespace PharmacyAPI.Controllers
             if (System.IO.File.Exists(filePath)) System.IO.File.Delete(filePath);
         }
 
-        [HttpGet("{id}")]
-        public async Task<ActionResult<Medicine>> GetMedicine(int id)
-        {
-            var medicine = await _context.Medicines.Include(m => m.Category).FirstOrDefaultAsync(m => m.Id == id);
-            if (medicine == null) return NotFound();
-            return medicine;
-        }
-
-        private bool MedicineExists(int id)
-        {
-            return _context.Medicines.Any(e => e.Id == id);
-        }
+        private bool MedicineExists(int id) => _context.Medicines.Any(e => e.Id == id);
     }
 }
