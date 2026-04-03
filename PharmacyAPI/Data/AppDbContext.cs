@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using PharmacyAPI.Model;
-using PharmacyAPI.Models;
+using PharmacyAPI.Models; // تأكد أن المسار صحيح لموديلاتك
 
 namespace PharmacyAPI.Data
 {
@@ -38,6 +38,11 @@ namespace PharmacyAPI.Data
                 entity.Property(m => m.SKU).IsRequired().HasMaxLength(50);
             });
 
+            // ✅ إضافة: جعل الإيميل فريد (Unique Index) لمنع تكرار الحسابات نهائياً
+            modelBuilder.Entity<User>()
+                .HasIndex(u => u.Email)
+                .IsUnique();
+
             // --- 3. إدارة العلاقات وحماية البيانات من الحذف (Relationships & Restrict Delete) ---
 
             // أ- ربط الصنف بالأدوية (منع حذف صنف يحتوي أدوية)
@@ -47,7 +52,7 @@ namespace PharmacyAPI.Data
                 .HasForeignKey(m => m.CategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // ب- ربط المستخدم بالطلبات (حل مشكلة UserId1 وضمان بقاء السجلات المالية)
+            // ب- ربط المستخدم بالطلبات (ضمان بقاء السجلات المالية)
             modelBuilder.Entity<Order>()
                 .HasOne(o => o.User)
                 .WithMany(u => u.Orders)

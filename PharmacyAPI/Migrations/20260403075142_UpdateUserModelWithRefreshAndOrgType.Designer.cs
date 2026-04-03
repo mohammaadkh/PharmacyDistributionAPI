@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PharmacyAPI.Data;
 
@@ -11,9 +12,11 @@ using PharmacyAPI.Data;
 namespace PharmacyAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260403075142_UpdateUserModelWithRefreshAndOrgType")]
+    partial class UpdateUserModelWithRefreshAndOrgType
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,26 +24,6 @@ namespace PharmacyAPI.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("Category", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Description")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Categories");
-                });
 
             modelBuilder.Entity("PharmacyAPI.Model.OrderDetail", b =>
                 {
@@ -96,6 +79,23 @@ namespace PharmacyAPI.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("CartItems");
+                });
+
+            modelBuilder.Entity("PharmacyAPI.Models.Category", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Categories");
                 });
 
             modelBuilder.Entity("PharmacyAPI.Models.Medicine", b =>
@@ -223,17 +223,11 @@ namespace PharmacyAPI.Migrations
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("EmailVerificationCode")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsEmailConfirmed")
-                        .HasColumnType("bit");
 
                     b.Property<string>("OrganizationType")
                         .IsRequired()
@@ -264,9 +258,6 @@ namespace PharmacyAPI.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Email")
-                        .IsUnique();
 
                     b.ToTable("Users");
                 });
@@ -311,7 +302,7 @@ namespace PharmacyAPI.Migrations
 
             modelBuilder.Entity("PharmacyAPI.Models.Medicine", b =>
                 {
-                    b.HasOne("Category", "Category")
+                    b.HasOne("PharmacyAPI.Models.Category", "Category")
                         .WithMany("Medicines")
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -331,7 +322,7 @@ namespace PharmacyAPI.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Category", b =>
+            modelBuilder.Entity("PharmacyAPI.Models.Category", b =>
                 {
                     b.Navigation("Medicines");
                 });

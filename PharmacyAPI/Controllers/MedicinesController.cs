@@ -20,31 +20,54 @@ namespace PharmacyAPI.Controllers
             _environment = environment;
         }
 
-        // --- 1. جلب الأدوية مع البحث والفلترة ---
+        // ───────────────────────────────────────────
+        // 1. جلب الأدوية مع البحث والفلترة والـ Pagination
+        // GET /api/medicines?search=&categoryId=&page=1&pageSize=20
+        // ───────────────────────────────────────────
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Medicine>>> GetMedicines(string? search, int? categoryId)
+        public async Task<IActionResult> GetMedicines(
+            string? search,
+            int? categoryId,
+            int page = 1,
+            int pageSize = 20)
         {
-            var query = _context.Medicines.Include(m => m.Category).AsQueryable();
+            // ✅ تعديل: حماية من pageSize كبير جداً
+            if (pageSize > 100) pageSize = 100;
+            if (page < 1) page = 1;
+
+            var query = _context.Medicines
+                .Include(m => m.Category)
+                .AsNoTracking()
+                .AsQueryable();
 
             if (!string.IsNullOrEmpty(search))
-            {
                 query = query.Where(m => m.Name.Contains(search)
                                       || m.SKU.Contains(search)
                                       || m.Manufacturer.Contains(search));
-            }
 
             if (categoryId.HasValue)
                 query = query.Where(m => m.CategoryId == categoryId.Value);
 
-            return await query.ToListAsync();
+            // ✅ تعديل: Pagination بدل إرجاع كل الأدوية مرة وحدة
+            var total = await query.CountAsync();
+            var items = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return Ok(new { total, page, pageSize, items });
         }
 
-        // --- 2. جلب تفاصيل دواء معين ---
+        // ───────────────────────────────────────────
+        // 2. جلب تفاصيل دواء معين
+        // GET /api/medicines/{id}
+        // ───────────────────────────────────────────
         [HttpGet("{id}")]
         public async Task<ActionResult<Medicine>> GetMedicine(int id)
         {
             var medicine = await _context.Medicines
                 .Include(m => m.Category)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(m => m.Id == id);
 
             if (medicine == null)
@@ -53,7 +76,10 @@ namespace PharmacyAPI.Controllers
             return medicine;
         }
 
-        // --- 3. جلب التفاصيل العميقة للواجهة ---
+        // ───────────────────────────────────────────
+        // 3. جلب التفاصيل العميقة للواجهة
+        // GET /api/medicines/{id}/details
+        // ───────────────────────────────────────────
         [HttpGet("{id}/details")]
         [AllowAnonymous]
         public async Task<ActionResult<ProductDetailsDto>> GetProductDetails(int id)
@@ -92,64 +118,101 @@ namespace PharmacyAPI.Controllers
             return Ok(details);
         }
 
-        // --- 4. إضافة دواء جديد (Admin فقط) ---
+        // ───────────────────────────────────────────
+        // 4. إضافة دواء جديد (Admin فقط)
+        // POST /api/medicines
+        // ───────────────────────────────────────────
         [HttpPost]
         [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<Medicine>> PostMedicine([FromForm] Medicine medicine)
+        public async Task<ActionResult<Medicine>> PostMedicine([FromForm] MedicineDto dto)
         {
-            if (medicine.Price <= 0)
+            // ✅ تعديل: استقبال MedicineDto بدل Medicine مباشرة
+            if (dto.Price <= 0)
                 return BadRequest(new { message = "خطأ: السعر يجب أن يكون قيمة موجبة!" });
 
-            if (string.IsNullOrWhiteSpace(medicine.Name))
+            if (string.IsNullOrWhiteSpace(dto.Name))
                 return BadRequest(new { message = "خطأ: اسم الدواء مطلوب!" });
 
-            if (medicine.ImageFile != null)
-                medicine.ImageUrl = await SaveImage(medicine.ImageFile);
+            var medicine = new Medicine
+            {
+                Name = dto.Name,
+                Description = dto.Description,
+                Price = dto.Price,
+                StockQuantity = dto.StockQuantity,
+                CategoryId = dto.CategoryId,
+                Manufacturer = dto.Manufacturer,
+                SKU = dto.SKU,
+                NdcNumber = dto.NdcNumber,
+                Dosage = dto.Dosage,
+                PackSize = dto.PackSize,
+                IsFdaApproved = dto.IsFdaApproved,
+                IsColdChain = dto.IsColdChain,
+                BlackBoxWarning = dto.BlackBoxWarning,
+                ClinicalSpecs = dto.ClinicalSpecs
+            };
+
+            // ✅ تعديل: SaveImage فيها validation على النوع والحجم
+            if (dto.ImageFile != null)
+            {
+                try { medicine.ImageUrl = await SaveImage(dto.ImageFile); }
+                catch (InvalidOperationException ex)
+                { return BadRequest(new { message = ex.Message }); }
+            }
 
             _context.Medicines.Add(medicine);
             await _context.SaveChangesAsync();
             return CreatedAtAction(nameof(GetMedicine), new { id = medicine.Id }, medicine);
         }
 
-        // --- 5. تعديل دواء (Admin فقط) ---
+        // ───────────────────────────────────────────
+        // 5. تعديل دواء (Admin فقط)
+        // PUT /api/medicines/{id}
+        // ───────────────────────────────────────────
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> PutMedicine(int id, [FromForm] Medicine medicine)
+        public async Task<IActionResult> PutMedicine(int id, [FromForm] MedicineDto dto)
         {
-            if (id != medicine.Id)
-                return BadRequest(new { message = "خطأ: معرف الدواء غير متطابق!" });
-
             var existingMedicine = await _context.Medicines
-                .AsNoTracking()
                 .FirstOrDefaultAsync(m => m.Id == id);
 
             if (existingMedicine == null)
                 return NotFound(new { message = "عذراً، الدواء المطلوب تعديله غير موجود!" });
 
-            if (medicine.ImageFile != null)
+            // ✅ تعديل: بنعدل على الـ existing بدل ما نحط entity جديدة
+            existingMedicine.Name = dto.Name;
+            existingMedicine.Description = dto.Description;
+            existingMedicine.Price = dto.Price;
+            existingMedicine.StockQuantity = dto.StockQuantity;
+            existingMedicine.CategoryId = dto.CategoryId;
+            existingMedicine.Manufacturer = dto.Manufacturer;
+            existingMedicine.SKU = dto.SKU;
+            existingMedicine.NdcNumber = dto.NdcNumber;
+            existingMedicine.Dosage = dto.Dosage;
+            existingMedicine.PackSize = dto.PackSize;
+            existingMedicine.IsFdaApproved = dto.IsFdaApproved;
+            existingMedicine.IsColdChain = dto.IsColdChain;
+            existingMedicine.BlackBoxWarning = dto.BlackBoxWarning;
+            existingMedicine.ClinicalSpecs = dto.ClinicalSpecs;
+
+            if (dto.ImageFile != null)
             {
-                DeleteOldImage(existingMedicine.ImageUrl);
-                medicine.ImageUrl = await SaveImage(medicine.ImageFile);
-            }
-            else
-            {
-                medicine.ImageUrl = existingMedicine.ImageUrl;
+                try
+                {
+                    DeleteOldImage(existingMedicine.ImageUrl);
+                    existingMedicine.ImageUrl = await SaveImage(dto.ImageFile);
+                }
+                catch (InvalidOperationException ex)
+                { return BadRequest(new { message = ex.Message }); }
             }
 
-            _context.Entry(medicine).State = EntityState.Modified;
-
-            try { await _context.SaveChangesAsync(); }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!MedicineExists(id))
-                    return NotFound(new { message = "عذراً، الدواء لم يعد موجوداً!" });
-                else throw;
-            }
-
+            await _context.SaveChangesAsync();
             return NoContent();
         }
 
-        // --- 6. حذف دواء (Admin فقط) ---
+        // ───────────────────────────────────────────
+        // 6. حذف دواء (Admin فقط)
+        // DELETE /api/medicines/{id}
+        // ───────────────────────────────────────────
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteMedicine(int id)
@@ -172,23 +235,36 @@ namespace PharmacyAPI.Controllers
             return NoContent();
         }
 
-        // --- Helper Methods ---
+        // ───────────────────────────────────────────
+        // Helper: حفظ الصورة مع validation
+        // ───────────────────────────────────────────
         private async Task<string> SaveImage(IFormFile file)
         {
+            // ✅ تعديل: التحقق من نوع الملف
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+            var extension = Path.GetExtension(file.FileName).ToLower();
+            if (!allowedExtensions.Contains(extension))
+                throw new InvalidOperationException("نوع الملف غير مسموح! المسموح: jpg, jpeg, png, webp");
+
+            // ✅ تعديل: التحقق من الحجم (5MB)
+            if (file.Length > 5 * 1024 * 1024)
+                throw new InvalidOperationException("حجم الصورة يتجاوز 5MB!");
+
             string folderPath = Path.Combine(_environment.WebRootPath, "images");
             if (!Directory.Exists(folderPath)) Directory.CreateDirectory(folderPath);
 
-            string fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
+            string fileName = Guid.NewGuid().ToString() + extension;
             string filePath = Path.Combine(folderPath, fileName);
 
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
+            using var stream = new FileStream(filePath, FileMode.Create);
+            await file.CopyToAsync(stream);
 
             return "/images/" + fileName;
         }
 
+        // ───────────────────────────────────────────
+        // Helper: حذف الصورة القديمة
+        // ───────────────────────────────────────────
         private void DeleteOldImage(string? imageUrl)
         {
             if (string.IsNullOrEmpty(imageUrl) || imageUrl.Contains("default.png")) return;

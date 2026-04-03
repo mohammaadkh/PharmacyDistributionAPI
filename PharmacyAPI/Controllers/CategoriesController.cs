@@ -12,88 +12,101 @@ namespace PharmacyAPI.Controllers
     {
         private readonly AppDbContext _context;
 
-        public CategoriesController(AppDbContext context) { _context = context; }
-
-        // --- 1. جلب الأصناف (متاحة للجميع) ---
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<Category>>> GetCategories()
+        public CategoriesController(AppDbContext context)
         {
-            return await _context.Categories.AsNoTracking().ToListAsync();
+            _context = context;
         }
 
-        // --- 2. إضافة صنف جديد (حماية يدوية برسالة فصحى) ---
+        // ───────────────────────────────────────────
+        // 1. جلب الأصناف مع Pagination
+        // GET /api/categories?page=1&pageSize=50
+        // ───────────────────────────────────────────
+        [HttpGet]
+        public async Task<IActionResult> GetCategories(int page = 1, int pageSize = 50)
+        {
+            if (page < 1) page = 1;
+            if (pageSize > 100) pageSize = 100;
+
+            var total = await _context.Categories.CountAsync();
+            var items = await _context.Categories
+                .AsNoTracking()
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return Ok(new { total, page, pageSize, items });
+        }
+
+        // ───────────────────────────────────────────
+        // 2. إضافة صنف جديد (Admin فقط)
+        // POST /api/categories
+        // ───────────────────────────────────────────
         [HttpPost]
-        [Authorize] // يشترط تسجيل الدخول فقط، والفحص يتم بالداخل
+        [Authorize(Roles = "Admin")] // ✅ تعديل: بدل الـ if بالداخل
         public async Task<ActionResult<Category>> PostCategory(Category category)
         {
-            // التحقق من صلاحية المشرف
-            if (!User.IsInRole("Admin"))
-            {
-                return StatusCode(403, new { message = "عذراً، لا تمتلك الصلاحيات الكافية لإضافة أصناف جديدة؛ هذه العملية مخصصة للمشرفين فقط." });
-            }
-
             if (string.IsNullOrWhiteSpace(category.Name))
-                return BadRequest(new { message = "خطأ: اسم الصنف يعتبر حقلاً مطلوباً ولا يمكن تركه فارغاً." });
+                return BadRequest(new { message = "خطأ: اسم الصنف حقل مطلوب ولا يمكن تركه فارغاً." });
+
+            // ✅ تعديل: التحقق من عدم تكرار الاسم
+            var exists = await _context.Categories
+                .AnyAsync(c => c.Name.ToLower() == category.Name.ToLower());
+            if (exists)
+                return BadRequest(new { message = "خطأ: هذا الصنف موجود مسبقاً!" });
 
             _context.Categories.Add(category);
             await _context.SaveChangesAsync();
             return Ok(category);
         }
 
-        // --- 3. تعديل صنف (حماية يدوية برسالة فصحى) ---
+        // ───────────────────────────────────────────
+        // 3. تعديل صنف (Admin فقط)
+        // PUT /api/categories/{id}
+        // ───────────────────────────────────────────
         [HttpPut("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin")] // ✅ تعديل: بدل الـ if بالداخل
         public async Task<IActionResult> PutCategory(int id, Category category)
         {
-            // التحقق من صلاحية المشرف
-            if (!User.IsInRole("Admin"))
-            {
-                return StatusCode(403, new { message = "تنبيه: لا يمكن تعديل بيانات الأصناف إلا من قبل المشرف المسؤول عن النظام." });
-            }
+            if (id != category.Id)
+                return BadRequest(new { message = "خطأ: معرف الصنف غير متطابق!" });
 
-            if (id != category.Id) return BadRequest();
+            // ✅ تعديل: بنعدل على الـ existing بدل ما نحط entity جديدة
+            var existing = await _context.Categories.FindAsync(id);
+            if (existing == null)
+                return NotFound(new { message = "عذراً، الصنف المطلوب تعديله غير موجود!" });
 
-            _context.Entry(category).State = EntityState.Modified;
+            existing.Name = category.Name;
+            existing.Description = category.Description;
 
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!CategoryExists(id)) return NotFound();
-                else throw;
-            }
-
+            await _context.SaveChangesAsync();
             return NoContent();
         }
 
-        // --- 4. حذف صنف (حماية يدوية برسالة فصحى) ---
+        // ───────────────────────────────────────────
+        // 4. حذف صنف (Admin فقط)
+        // DELETE /api/categories/{id}
+        // ───────────────────────────────────────────
         [HttpDelete("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin")] // ✅ تعديل: بدل الـ if بالداخل
         public async Task<IActionResult> DeleteCategory(int id)
         {
-            // التحقق من صلاحية المشرف
-            if (!User.IsInRole("Admin"))
-            {
-                return StatusCode(403, new { message = "نعتذر، صلاحية حذف الأصناف محصورة فقط بمدير النظام نظراً لخطورة هذه العملية." });
-            }
-
             var category = await _context.Categories.FindAsync(id);
-            if (category == null) return NotFound();
+            if (category == null)
+                return NotFound(new { message = "عذراً، الصنف المطلوب حذفه غير موجود!" });
 
             var hasMedicines = await _context.Medicines.AnyAsync(m => m.CategoryId == id);
             if (hasMedicines)
-                return BadRequest(new { message = "لا يمكن إتمام عملية الحذف؛ يوجد أدوية مرتبطة بهذا الصنف حالياً." });
+                return BadRequest(new { message = "لا يمكن حذف هذا الصنف لأنه يحتوي على أدوية مرتبطة به!" });
 
             _context.Categories.Remove(category);
             await _context.SaveChangesAsync();
             return NoContent();
         }
 
-        private bool CategoryExists(int id)
-        {
-            return _context.Categories.Any(e => e.Id == id);
-        }
+        // ───────────────────────────────────────────
+        // Helper
+        // ───────────────────────────────────────────
+        private bool CategoryExists(int id) =>
+            _context.Categories.Any(e => e.Id == id);
     }
 }
