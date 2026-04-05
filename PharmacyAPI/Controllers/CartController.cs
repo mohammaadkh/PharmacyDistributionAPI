@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PharmacyAPI.Data;
 using PharmacyAPI.Model;
-using PharmacyAPI.Models;
+using PharmacyAPI.Models; // تأكد أن هذا هو اسم الـ Namespace الصحيح لموديلاتك
 using System.Security.Claims;
 
 namespace PharmacyAPI.Controllers
@@ -14,17 +14,23 @@ namespace PharmacyAPI.Controllers
     public class CartController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IConfiguration _config;
 
-        public CartController(AppDbContext context) { _context = context; }
+        public CartController(AppDbContext context, IConfiguration config)
+        {
+            _context = context;
+            _config = config;
+        }
 
-        // ───────────────────────────────────────────
         // 1. جلب محتويات السلة
-        // GET /api/cart
-        // ───────────────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> GetUserCart()
         {
             var userId = GetUserId();
+
+            // جلب الإعدادات من appsettings.json
+            var estimatedShipping = _config.GetValue<decimal>("CartSettings:EstimatedShipping");
+            var regulatoryFees = _config.GetValue<decimal>("CartSettings:RegulatoryFees");
 
             var cartItems = await _context.CartItems
                 .AsNoTracking()
@@ -37,8 +43,8 @@ namespace PharmacyAPI.Controllers
                     ProductName = item.Medicine.Name,
                     SKU = item.Medicine.SKU,
                     item.Medicine.ImageUrl,
-                    IsFdaApproved = item.Medicine.IsFdaApproved,
-                    IsColdChain = item.Medicine.IsColdChain,
+                    item.Medicine.IsFdaApproved,
+                    item.Medicine.IsColdChain,
                     UnitPrice = item.Medicine.Price,
                     item.Quantity,
                     Total = item.Quantity * item.Medicine.Price
@@ -55,17 +61,14 @@ namespace PharmacyAPI.Controllers
                 {
                     totalUnits,
                     subtotal,
-                    estimatedShipping = 145.50m,
-                    regulatoryFees = 89.00m,
-                    totalEstimate = subtotal + 145.50m + 89.00m
+                    estimatedShipping,
+                    regulatoryFees,
+                    totalEstimate = subtotal + estimatedShipping + regulatoryFees
                 }
             });
         }
 
-        // ───────────────────────────────────────────
         // 2. إضافة دواء للسلة
-        // POST /api/cart/add/{medicineId}?quantity=1
-        // ───────────────────────────────────────────
         [HttpPost("add/{medicineId}")]
         public async Task<IActionResult> AddToCart(int medicineId, int quantity = 1)
         {
@@ -76,20 +79,18 @@ namespace PharmacyAPI.Controllers
 
             var medicine = await _context.Medicines.FindAsync(medicineId);
             if (medicine == null)
-                return NotFound(new { message = $"عذراً، الدواء رقم {medicineId} غير موجود!" });
+                return NotFound(new { message = "الدواء غير موجود!" });
 
-            // ✅ تعديل: تحقق من المخزون
             if (quantity > medicine.StockQuantity)
-                return BadRequest(new { message = $"الكمية المطلوبة تتجاوز المخزون المتاح ({medicine.StockQuantity})!" });
+                return BadRequest(new { message = $"المخزون غير كافٍ، المتاح: {medicine.StockQuantity}" });
 
             var existingItem = await _context.CartItems
                 .FirstOrDefaultAsync(c => c.UserId == userId && c.MedicineId == medicineId);
 
             if (existingItem != null)
             {
-                // ✅ تعديل: تحقق من المخزون بعد الإضافة
                 if (existingItem.Quantity + quantity > medicine.StockQuantity)
-                    return BadRequest(new { message = $"الكمية الإجمالية تتجاوز المخزون المتاح ({medicine.StockQuantity})!" });
+                    return BadRequest(new { message = "الكمية الإجمالية تتجاوز المخزون!" });
 
                 existingItem.Quantity += quantity;
             }
@@ -107,10 +108,7 @@ namespace PharmacyAPI.Controllers
             return Ok(new { message = "تمت الإضافة للسلة بنجاح" });
         }
 
-        // ───────────────────────────────────────────
         // 3. تحديث الكمية
-        // PUT /api/cart/update-quantity?cartItemId=&newQuantity=
-        // ───────────────────────────────────────────
         [HttpPut("update-quantity")]
         public async Task<IActionResult> UpdateQuantity(int cartItemId, int newQuantity)
         {
@@ -121,7 +119,7 @@ namespace PharmacyAPI.Controllers
                 .FirstOrDefaultAsync(c => c.Id == cartItemId && c.UserId == userId);
 
             if (item == null)
-                return NotFound(new { message = "العنصر غير موجود في سلتك الشخصية!" });
+                return NotFound(new { message = "العنصر غير موجود!" });
 
             if (newQuantity <= 0)
             {
@@ -129,9 +127,8 @@ namespace PharmacyAPI.Controllers
             }
             else
             {
-                // ✅ تعديل: تحقق من المخزون
                 if (newQuantity > item.Medicine.StockQuantity)
-                    return BadRequest(new { message = $"الكمية المطلوبة تتجاوز المخزون المتاح ({item.Medicine.StockQuantity})!" });
+                    return BadRequest(new { message = $"المخزون المتاح فقط: {item.Medicine.StockQuantity}" });
 
                 item.Quantity = newQuantity;
             }
@@ -140,30 +137,23 @@ namespace PharmacyAPI.Controllers
             return Ok(new { message = "تم تحديث الكمية بنجاح!" });
         }
 
-        // ───────────────────────────────────────────
         // 4. حذف عنصر من السلة
-        // DELETE /api/cart/{id}
-        // ───────────────────────────────────────────
         [HttpDelete("{id}")]
         public async Task<IActionResult> RemoveItem(int id)
         {
             var userId = GetUserId();
-
             var item = await _context.CartItems
                 .FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId);
 
             if (item == null)
-                return NotFound(new { message = "العنصر غير موجود في سلتك الشخصية!" });
+                return NotFound(new { message = "العنصر غير موجود!" });
 
             _context.CartItems.Remove(item);
             await _context.SaveChangesAsync();
             return NoContent();
         }
 
-        // ───────────────────────────────────────────
-        // 5. Checkout — تحويل السلة إلى فاتورة
-        // POST /api/cart/checkout
-        // ───────────────────────────────────────────
+        // 5. Checkout — تحويل السلة إلى طلب فعلي وخصم المخزون
         [HttpPost("checkout")]
         public async Task<IActionResult> Checkout()
         {
@@ -175,30 +165,27 @@ namespace PharmacyAPI.Controllers
                 .ToListAsync();
 
             if (!cartItems.Any())
-                return BadRequest(new { message = "السلة فارغة، لا يمكن إتمام الطلب!" });
+                return BadRequest(new { message = "السلة فارغة!" });
 
-            // ✅ تعديل: تحقق من المخزون قبل الـ Checkout
+            // فحص أولي للمخزون قبل بدء العملية
             foreach (var item in cartItems)
             {
                 if (item.Quantity > item.Medicine.StockQuantity)
-                    return BadRequest(new
-                    {
-                        message = $"الكمية المطلوبة من {item.Medicine.Name} تتجاوز المخزون المتاح ({item.Medicine.StockQuantity})!"
-                    });
+                    return BadRequest(new { message = $"الكمية المطلوبة من {item.Medicine.Name} غير متوفرة حالياً!" });
             }
 
             var subtotal = cartItems.Sum(item => item.Quantity * item.Medicine.Price);
-            var shipping = 145.50m;
-            var regulatory = 89.00m;
+            var shipping = _config.GetValue<decimal>("CartSettings:EstimatedShipping");
+            var regulatory = _config.GetValue<decimal>("CartSettings:RegulatoryFees");
 
-            // ✅ تعديل: Transaction لضمان سلامة البيانات
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
+                // إنشاء الطلب الرئيسي
                 var order = new Order
                 {
                     UserId = userId,
-                    OrderDate = DateTime.UtcNow, // ✅ تعديل: UTC
+                    OrderDate = DateTime.UtcNow,
                     Subtotal = subtotal,
                     ShippingFees = shipping,
                     RegulatoryFees = regulatory,
@@ -207,43 +194,47 @@ namespace PharmacyAPI.Controllers
                 };
 
                 _context.Orders.Add(order);
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(); // لنحصل على Id الطلب
 
-                var orderDetails = cartItems.Select(item => new OrderDetail
+                // تجهيز تفاصيل الطلب وخصم المخزون
+                var orderDetails = new List<OrderDetail>();
+                foreach (var item in cartItems)
                 {
-                    OrderId = order.Id,
-                    MedicineId = item.MedicineId,
-                    Quantity = item.Quantity,
-                    PriceAtPurchase = item.Medicine.Price
-                }).ToList();
+                    // ✅ التعديل المهم: خصم الكمية من الدواء نفسه
+                    item.Medicine.StockQuantity -= item.Quantity;
+
+                    orderDetails.Add(new OrderDetail
+                    {
+                        OrderId = order.Id,
+                        MedicineId = item.MedicineId,
+                        Quantity = item.Quantity,
+                        PriceAtPurchase = item.Medicine.Price
+                    });
+                }
 
                 _context.OrderDetails.AddRange(orderDetails);
-                _context.CartItems.RemoveRange(cartItems);
-                await _context.SaveChangesAsync();
+                _context.CartItems.RemoveRange(cartItems); // تفريغ السلة
 
+                await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
                 return Ok(new
                 {
-                    message = "تم تثبيت طلبك بنجاح!",
+                    message = "تم تثبيت طلبك بنجاح وخصم الكميات من المخزون!",
                     orderId = order.Id,
                     finalTotal = order.TotalAmount
                 });
             }
-            catch
+            catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                return StatusCode(500, new { message = "حدث خطأ أثناء تثبيت الطلب، حاول مجدداً!" });
+                return StatusCode(500, new { message = "حدث خطأ فني أثناء المعالجة!", error = ex.Message });
             }
         }
 
-        // ───────────────────────────────────────────
-        // Helper: جلب الـ UserId من الـ Token
-        // ───────────────────────────────────────────
         private int GetUserId()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            // ✅ تعديل: بدل ما يرجع 0، بيرمي exception
             if (string.IsNullOrEmpty(userIdClaim))
                 throw new UnauthorizedAccessException();
             return int.Parse(userIdClaim);

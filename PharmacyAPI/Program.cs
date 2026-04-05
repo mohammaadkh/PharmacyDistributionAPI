@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -9,31 +9,40 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. ��� ����� �������� SQL Server
+// 1. ربط قاعدة البيانات SQL Server
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// 2. ������� ��� JSON ������ �������� ��������
+// 2. إعدادات الـ JSON لحماية العلاقات الدائرية
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
 });
 
-// 3. ����� ����� ��� CORS
+// 3. تعريف سياسة الـ CORS
+// ✅ تعديل: أضفنا سياسة ثانية للـ Production بدل AllowAll
+// قبل: سياسة وحدة AllowAnyOrigin للكل
+// بعد: سياستين — AllowAll للـ Development، AllowFrontend للـ Production
+// ليش: AllowAnyOrigin بالـ Production يخلي أي موقع يكلم الـ API
+//       وهاد خطر أمني — نحدد الفرونت بس يكلمنا
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", b => b.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+    options.AddPolicy("AllowAll", b =>
+        b.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+
+    options.AddPolicy("AllowFrontend", b =>
+        b.WithOrigins(builder.Configuration["AppSettings:FrontendUrl"]!)
+         .AllowAnyMethod()
+         .AllowAnyHeader());
 });
 
-// 4. ������� ���� ������ JWT
+// 4. إعدادات نظام الأمان JWT
 var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
 
 if (string.IsNullOrEmpty(jwtKey) || string.IsNullOrEmpty(jwtIssuer))
-{
-    throw new Exception("������� ��� JWT ������ �� ��� appsettings.json!");
-}
+    throw new Exception("إعدادات الـ JWT مفقودة في ملف appsettings.json!");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -50,7 +59,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// 5. ������� Swagger
+// 5. إعدادات Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -61,7 +70,7 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "Bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "���� ������ ���: ���� Bearer �� ����� �� ������"
+        Description = "أدخل التوكن هنا: اكتب Bearer ثم مسافة ثم التوكن"
     });
 
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -76,21 +85,29 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// 6. ����� ��� EmailService
+// 6. تسجيل الـ EmailService
 builder.Services.AddSingleton<EmailService>();
 
 var app = builder.Build();
 
-// 7. ����� ��� Middleware
+// 7. ترتيب الـ Middleware
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+
+    // ✅ تعديل: AllowAll بالـ Development بس
+    // قبل: app.UseCors("AllowAll") دايماً
+    // بعد: AllowAll بالـ Development، AllowFrontend بالـ Production
+    app.UseCors("AllowAll");
+}
+else
+{
+    app.UseCors("AllowFrontend");
 }
 
 app.UseStaticFiles();
 app.UseHttpsRedirection();
-app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
@@ -99,7 +116,14 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    context.Database.EnsureCreated();
+
+    // ✅ تعديل: Migrate() بدل EnsureCreated()
+    // قبل: context.Database.EnsureCreated()
+    // بعد: context.Database.Migrate()
+    // ليش: EnsureCreated بيعمل الداتابيز من الصفر بس ما بطبق
+    //       أي Migration جديد — Migrate() بيطبق كل التغييرات
+    //       الجديدة تلقائياً وما بمسح البيانات الموجودة
+    context.Database.Migrate();
 
     if (!context.Categories.Any())
     {

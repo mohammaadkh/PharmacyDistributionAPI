@@ -25,7 +25,7 @@ namespace PharmacyAPI.Models
         public decimal TotalAmount { get; set; } // المجموع النهائي (2,631.50$)
 
         public string Status { get; set; } = "Pending";
-
+        public string OrderNumber { get; set; } = string.Empty;
         // ربط الفاتورة بتفاصيلها (الأدوية المشتراة)
         public List<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();
     }
