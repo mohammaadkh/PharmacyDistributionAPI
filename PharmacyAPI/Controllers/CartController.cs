@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PharmacyAPI.Data;
 using PharmacyAPI.Model;
-using PharmacyAPI.Models; // تأكد أن هذا هو اسم الـ Namespace الصحيح لموديلاتك
+using PharmacyAPI.Models;
 using System.Security.Claims;
 
 namespace PharmacyAPI.Controllers
@@ -22,13 +22,15 @@ namespace PharmacyAPI.Controllers
             _config = config;
         }
 
+        // ───────────────────────────────────────────
         // 1. جلب محتويات السلة
+        // GET /api/cart
+        // ───────────────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> GetUserCart()
         {
             var userId = GetUserId();
 
-            // جلب الإعدادات من appsettings.json
             var estimatedShipping = _config.GetValue<decimal>("CartSettings:EstimatedShipping");
             var regulatoryFees = _config.GetValue<decimal>("CartSettings:RegulatoryFees");
 
@@ -68,7 +70,10 @@ namespace PharmacyAPI.Controllers
             });
         }
 
+        // ───────────────────────────────────────────
         // 2. إضافة دواء للسلة
+        // POST /api/cart/add/{medicineId}?quantity=1
+        // ───────────────────────────────────────────
         [HttpPost("add/{medicineId}")]
         public async Task<IActionResult> AddToCart(int medicineId, int quantity = 1)
         {
@@ -108,7 +113,10 @@ namespace PharmacyAPI.Controllers
             return Ok(new { message = "تمت الإضافة للسلة بنجاح" });
         }
 
+        // ───────────────────────────────────────────
         // 3. تحديث الكمية
+        // PUT /api/cart/update-quantity?cartItemId=&newQuantity=
+        // ───────────────────────────────────────────
         [HttpPut("update-quantity")]
         public async Task<IActionResult> UpdateQuantity(int cartItemId, int newQuantity)
         {
@@ -137,11 +145,15 @@ namespace PharmacyAPI.Controllers
             return Ok(new { message = "تم تحديث الكمية بنجاح!" });
         }
 
+        // ───────────────────────────────────────────
         // 4. حذف عنصر من السلة
+        // DELETE /api/cart/{id}
+        // ───────────────────────────────────────────
         [HttpDelete("{id}")]
         public async Task<IActionResult> RemoveItem(int id)
         {
             var userId = GetUserId();
+
             var item = await _context.CartItems
                 .FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId);
 
@@ -153,85 +165,9 @@ namespace PharmacyAPI.Controllers
             return NoContent();
         }
 
-        // 5. Checkout — تحويل السلة إلى طلب فعلي وخصم المخزون
-        [HttpPost("checkout")]
-        public async Task<IActionResult> Checkout()
-        {
-            var userId = GetUserId();
-
-            var cartItems = await _context.CartItems
-                .Include(c => c.Medicine)
-                .Where(c => c.UserId == userId)
-                .ToListAsync();
-
-            if (!cartItems.Any())
-                return BadRequest(new { message = "السلة فارغة!" });
-
-            // فحص أولي للمخزون قبل بدء العملية
-            foreach (var item in cartItems)
-            {
-                if (item.Quantity > item.Medicine.StockQuantity)
-                    return BadRequest(new { message = $"الكمية المطلوبة من {item.Medicine.Name} غير متوفرة حالياً!" });
-            }
-
-            var subtotal = cartItems.Sum(item => item.Quantity * item.Medicine.Price);
-            var shipping = _config.GetValue<decimal>("CartSettings:EstimatedShipping");
-            var regulatory = _config.GetValue<decimal>("CartSettings:RegulatoryFees");
-
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            try
-            {
-                // إنشاء الطلب الرئيسي
-                var order = new Order
-                {
-                    UserId = userId,
-                    OrderDate = DateTime.UtcNow,
-                    Subtotal = subtotal,
-                    ShippingFees = shipping,
-                    RegulatoryFees = regulatory,
-                    TotalAmount = subtotal + shipping + regulatory,
-                    Status = "Pending"
-                };
-
-                _context.Orders.Add(order);
-                await _context.SaveChangesAsync(); // لنحصل على Id الطلب
-
-                // تجهيز تفاصيل الطلب وخصم المخزون
-                var orderDetails = new List<OrderDetail>();
-                foreach (var item in cartItems)
-                {
-                    // ✅ التعديل المهم: خصم الكمية من الدواء نفسه
-                    item.Medicine.StockQuantity -= item.Quantity;
-
-                    orderDetails.Add(new OrderDetail
-                    {
-                        OrderId = order.Id,
-                        MedicineId = item.MedicineId,
-                        Quantity = item.Quantity,
-                        PriceAtPurchase = item.Medicine.Price
-                    });
-                }
-
-                _context.OrderDetails.AddRange(orderDetails);
-                _context.CartItems.RemoveRange(cartItems); // تفريغ السلة
-
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                return Ok(new
-                {
-                    message = "تم تثبيت طلبك بنجاح وخصم الكميات من المخزون!",
-                    orderId = order.Id,
-                    finalTotal = order.TotalAmount
-                });
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                return StatusCode(500, new { message = "حدث خطأ فني أثناء المعالجة!", error = ex.Message });
-            }
-        }
-
+        // ───────────────────────────────────────────
+        // Helper
+        // ───────────────────────────────────────────
         private int GetUserId()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
