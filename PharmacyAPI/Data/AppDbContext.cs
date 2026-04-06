@@ -1,6 +1,6 @@
-﻿ using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using PharmacyAPI.Model;
-using PharmacyAPI.Models;
+using PharmacyAPI.Models; // تأكد أن الموديلات كلها بهذا الـ Namespace
 
 namespace PharmacyAPI.Data
 {
@@ -15,16 +15,16 @@ namespace PharmacyAPI.Data
         public DbSet<CartItem> CartItems { get; set; }
         public DbSet<Order> Orders { get; set; }
         public DbSet<OrderDetail> OrderDetails { get; set; }
-        // ✅ جديد
         public DbSet<Notification> Notifications { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            // Decimal Precision
-            modelBuilder.Entity<Medicine>()
-                .Property(m => m.Price).HasPrecision(18, 2);
-            modelBuilder.Entity<OrderDetail>()
-                .Property(m => m.PriceAtPurchase).HasPrecision(18, 2);
+            base.OnModelCreating(modelBuilder);
+
+            // 1. Decimal Precision (كما هي لديك)
+            modelBuilder.Entity<Medicine>().Property(m => m.Price).HasPrecision(18, 2);
+            modelBuilder.Entity<Medicine>().Property(m => m.HumidityLimit).HasPrecision(5, 2);
+            modelBuilder.Entity<OrderDetail>().Property(m => m.PriceAtPurchase).HasPrecision(18, 2);
             modelBuilder.Entity<Order>(entity =>
             {
                 entity.Property(o => o.Subtotal).HasPrecision(18, 2);
@@ -33,21 +33,17 @@ namespace PharmacyAPI.Data
                 entity.Property(o => o.TotalAmount).HasPrecision(18, 2);
             });
 
-            // Constraints
+            // 2. Constraints & Indexes
             modelBuilder.Entity<Medicine>(entity =>
             {
                 entity.Property(m => m.Dosage).IsRequired().HasMaxLength(50);
                 entity.Property(m => m.Manufacturer).IsRequired().HasMaxLength(100);
-                entity.Property(m => m.PackSize).HasMaxLength(50);
                 entity.Property(m => m.SKU).IsRequired().HasMaxLength(50);
             });
 
-            // Unique Email
-            modelBuilder.Entity<User>()
-                .HasIndex(u => u.Email)
-                .IsUnique();
+            modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
 
-            // Relationships
+            // 3. Relationships (مع ضبط الحذف)
             modelBuilder.Entity<Category>()
                 .HasMany(c => c.Medicines)
                 .WithOne(m => m.Category)
@@ -60,35 +56,47 @@ namespace PharmacyAPI.Data
                 .HasForeignKey(o => o.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            modelBuilder.Entity<CartItem>()
-                .HasOne(ci => ci.Medicine)
-                .WithMany()
-                .HasForeignKey(ci => ci.MedicineId)
-                .OnDelete(DeleteBehavior.Restrict);
+            // 4. ✅ SEED DATA - إضافة بيانات تلقائية
+            // أولاً: إضافة تصنيفات
+            modelBuilder.Entity<Category>().HasData(
+                new Category { Id = 1, Name = "Antibiotics", Description = "Bacterial infections" },
+                new Category { Id = 2, Name = "Painkillers", Description = "Pain relief" }
+            );
 
-            modelBuilder.Entity<OrderDetail>()
-                .HasOne(od => od.Medicine)
-                .WithMany()
-                .HasForeignKey(od => od.MedicineId)
-                .OnDelete(DeleteBehavior.Restrict);
-            modelBuilder.Entity<SupportTicket>()
-                 .HasOne(t => t.User)
-                 .WithMany()
-                .HasForeignKey(t => t.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-            // أضفه مع باقي الـ Decimal Precision
-            modelBuilder.Entity<Medicine>()
-                .Property(m => m.HumidityLimit)
-                .HasPrecision(5, 2);
+            // ثانياً: إضافة أدوية (تأكد أن الـ CategoryId موجود فوق)
+            modelBuilder.Entity<Medicine>().HasData(
+                new Medicine
+                {
+                    Id = 1,
+                    Name = "Panadol",
+                    CategoryId = 2,
+                    Price = 12.50m,
+                    StockQuantity = 100,
+                    SKU = "PAN-001",
+                    Dosage = "500mg",
+                    Manufacturer = "GSK",
+                    IsFdaApproved = true
+                },
+                new Medicine
+                {
+                    Id = 2,
+                    Name = "Amoxicillin",
+                    CategoryId = 1,
+                    Price = 45.00m,
+                    StockQuantity = 50,
+                    SKU = "AMO-002",
+                    Dosage = "250mg",
+                    Manufacturer = "Pfizer",
+                    IsColdChain = false
+                }
+            );
 
-            // ✅ جديد — Notifications
+            // 5. Notifications Relationship
             modelBuilder.Entity<Notification>()
                 .HasOne(n => n.User)
-                .WithMany(u => u.Notifications) // ✅ حدد الـ navigation property
+                .WithMany(u => u.Notifications)
                 .HasForeignKey(n => n.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
-
-            base.OnModelCreating(modelBuilder);
         }
     }
 }

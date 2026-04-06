@@ -12,8 +12,8 @@ using PharmacyAPI.Data;
 namespace PharmacyAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260406060431_UpdateOrdersTableCustomNotest")]
-    partial class UpdateOrdersTableCustomNotest
+    [Migration("20260406083403_InitialProMax")]
+    partial class InitialProMax
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -134,7 +134,8 @@ namespace PharmacyAPI.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<decimal?>("HumidityLimit")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
                     b.Property<string>("ImageUrl")
                         .HasColumnType("nvarchar(max)");

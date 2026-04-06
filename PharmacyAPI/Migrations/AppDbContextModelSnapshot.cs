@@ -40,6 +40,20 @@ namespace PharmacyAPI.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Categories");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Description = "Bacterial infections",
+                            Name = "Antibiotics"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Description = "Pain relief",
+                            Name = "Painkillers"
+                        });
                 });
 
             modelBuilder.Entity("PharmacyAPI.Model.OrderDetail", b =>
@@ -160,8 +174,7 @@ namespace PharmacyAPI.Migrations
 
                     b.Property<string>("PackSize")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal>("Price")
                         .HasPrecision(18, 2)
@@ -183,6 +196,44 @@ namespace PharmacyAPI.Migrations
                     b.HasIndex("CategoryId");
 
                     b.ToTable("Medicines");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CategoryId = 2,
+                            ControlledSubstance = "Non-Controlled",
+                            Description = "",
+                            Dosage = "500mg",
+                            ImageUrl = "/images/default.png",
+                            IsColdChain = false,
+                            IsFdaApproved = true,
+                            IsGmpCertified = false,
+                            Manufacturer = "GSK",
+                            Name = "Panadol",
+                            PackSize = "",
+                            Price = 12.50m,
+                            SKU = "PAN-001",
+                            StockQuantity = 100
+                        },
+                        new
+                        {
+                            Id = 2,
+                            CategoryId = 1,
+                            ControlledSubstance = "Non-Controlled",
+                            Description = "",
+                            Dosage = "250mg",
+                            ImageUrl = "/images/default.png",
+                            IsColdChain = false,
+                            IsFdaApproved = false,
+                            IsGmpCertified = false,
+                            Manufacturer = "Pfizer",
+                            Name = "Amoxicillin",
+                            PackSize = "",
+                            Price = 45.00m,
+                            SKU = "AMO-002",
+                            StockQuantity = 50
+                        });
                 });
 
             modelBuilder.Entity("PharmacyAPI.Models.Notification", b =>
@@ -389,7 +440,7 @@ namespace PharmacyAPI.Migrations
                     b.HasOne("PharmacyAPI.Models.Medicine", "Medicine")
                         .WithMany()
                         .HasForeignKey("MedicineId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("PharmacyAPI.Models.Order", "Order")
@@ -408,7 +459,7 @@ namespace PharmacyAPI.Migrations
                     b.HasOne("PharmacyAPI.Models.Medicine", "Medicine")
                         .WithMany()
                         .HasForeignKey("MedicineId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("PharmacyAPI.Models.User", "User")
