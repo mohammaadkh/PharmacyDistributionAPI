@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PharmacyAPI.Data;
 using PharmacyAPI.Models;
 using PharmacyAPI.Models.DTOs;
+using System.Text;
 
 namespace PharmacyAPI.Controllers
 {
@@ -22,16 +23,23 @@ namespace PharmacyAPI.Controllers
 
         // ───────────────────────────────────────────
         // 1. جلب الأدوية مع البحث والفلترة والـ Pagination
-        // GET /api/medicines?search=&categoryId=&page=1&pageSize=20
+        // GET /api/medicines?search=&categoryId=&manufacturer=&
+        //     isFdaApproved=&inStockOnly=&minPrice=&maxPrice=&
+        //     sortBy=price&page=1&pageSize=20
         // ───────────────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> GetMedicines(
-            string? search,
-            int? categoryId,
+            string? search = null,
+            int? categoryId = null,
+            string? manufacturer = null,
+            bool? isFdaApproved = null,
+            bool? inStockOnly = null,
+            decimal? minPrice = null,
+            decimal? maxPrice = null,
+            string? sortBy = null,
             int page = 1,
             int pageSize = 20)
         {
-            // ✅ تعديل: حماية من pageSize كبير جداً
             if (pageSize > 100) pageSize = 100;
             if (page < 1) page = 1;
 
@@ -40,19 +48,69 @@ namespace PharmacyAPI.Controllers
                 .AsNoTracking()
                 .AsQueryable();
 
+            // ✅ فلتر البحث
             if (!string.IsNullOrEmpty(search))
-                query = query.Where(m => m.Name.Contains(search)
-                                      || m.SKU.Contains(search)
-                                      || m.Manufacturer.Contains(search));
+                query = query.Where(m =>
+                    m.Name.Contains(search) ||
+                    m.SKU.Contains(search) ||
+                    m.Manufacturer.Contains(search));
 
+            // ✅ فلتر الكاتيغوري
             if (categoryId.HasValue)
                 query = query.Where(m => m.CategoryId == categoryId.Value);
 
-            // ✅ تعديل: Pagination بدل إرجاع كل الأدوية مرة وحدة
+            // ✅ فلتر المصنع
+            if (!string.IsNullOrEmpty(manufacturer))
+                query = query.Where(m => m.Manufacturer.Contains(manufacturer));
+
+            // ✅ فلتر FDA Approved
+            if (isFdaApproved.HasValue)
+                query = query.Where(m => m.IsFdaApproved == isFdaApproved.Value);
+
+            // ✅ فلتر المتوفر بالمخزون فقط
+            if (inStockOnly == true)
+                query = query.Where(m => m.StockQuantity > 0);
+
+            // ✅ فلتر السعر
+            if (minPrice.HasValue)
+                query = query.Where(m => m.Price >= minPrice.Value);
+
+            if (maxPrice.HasValue)
+                query = query.Where(m => m.Price <= maxPrice.Value);
+
+            // ✅ الترتيب
+            query = sortBy switch
+            {
+                "price_asc" => query.OrderBy(m => m.Price),
+                "price_desc" => query.OrderByDescending(m => m.Price),
+                "name" => query.OrderBy(m => m.Name),
+                "stock" => query.OrderByDescending(m => m.StockQuantity),
+                _ => query.OrderBy(m => m.Name)
+            };
+
             var total = await query.CountAsync();
             var items = await query
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
+                .Select(m => new
+                {
+                    m.Id,
+                    m.Name,
+                    m.Description,
+                    m.Price,
+                    m.StockQuantity,
+                    m.SKU,
+                    m.Dosage,
+                    m.Manufacturer,
+                    m.PackSize,
+                    m.ImageUrl,
+                    m.IsFdaApproved,
+                    m.IsGmpCertified,
+                    m.IsColdChain,
+                    CategoryName = m.Category != null ? m.Category.Name : "General",
+                    InStock = m.StockQuantity > 0,
+                    IsLowStock = m.StockQuantity < 50 && m.StockQuantity > 0
+                })
                 .ToListAsync();
 
             return Ok(new { total, page, pageSize, items });
@@ -63,7 +121,7 @@ namespace PharmacyAPI.Controllers
         // GET /api/medicines/{id}
         // ───────────────────────────────────────────
         [HttpGet("{id}")]
-        public async Task<ActionResult<Medicine>> GetMedicine(int id)
+        public async Task<IActionResult> GetMedicine(int id)
         {
             var medicine = await _context.Medicines
                 .Include(m => m.Category)
@@ -73,7 +131,7 @@ namespace PharmacyAPI.Controllers
             if (medicine == null)
                 return NotFound(new { message = "عذراً، هذا الدواء غير موجود!" });
 
-            return medicine;
+            return Ok(medicine);
         }
 
         // ───────────────────────────────────────────
@@ -82,10 +140,10 @@ namespace PharmacyAPI.Controllers
         // ───────────────────────────────────────────
         [HttpGet("{id}/details")]
         [AllowAnonymous]
-        public async Task<ActionResult<ProductDetailsDto>> GetProductDetails(int id)
+        public async Task<IActionResult> GetProductDetails(int id)
         {
             if (id <= 0)
-                return BadRequest(new { message = "خطأ: معرف المنتج غير صالح!" });
+                return BadRequest(new { message = "معرف المنتج غير صالح!" });
 
             var medicine = await _context.Medicines
                 .AsNoTracking()
@@ -93,13 +151,13 @@ namespace PharmacyAPI.Controllers
                 .FirstOrDefaultAsync(m => m.Id == id);
 
             if (medicine == null)
-                return NotFound(new { message = "عذراً، هذا المنتج غير متوفر حالياً!" });
+                return NotFound(new { message = "هذا المنتج غير متوفر حالياً!" });
 
             var details = new ProductDetailsDto
             {
                 Id = medicine.Id,
                 Name = medicine.Name,
-                Description = medicine.Description ?? "لا يوجد وصف طبي متوفر حالياً.",
+                Description = medicine.Description ?? "لا يوجد وصف طبي متوفر.",
                 NdcNumber = medicine.NdcNumber ?? "غير متوفر",
                 ManufacturerName = medicine.Manufacturer,
                 CategoryName = medicine.Category?.Name ?? "General",
@@ -109,7 +167,7 @@ namespace PharmacyAPI.Controllers
                 ImageUrl = medicine.ImageUrl,
                 IsFdaApproved = medicine.IsFdaApproved,
                 IsColdChain = medicine.IsColdChain,
-                BlackBoxWarning = medicine.BlackBoxWarning ?? "لا يوجد تحذير خاص بهذا الدواء",
+                BlackBoxWarning = medicine.BlackBoxWarning ?? "لا يوجد تحذير خاص",
                 ClinicalSpecs = string.IsNullOrEmpty(medicine.ClinicalSpecs)
                     ? new List<string>()
                     : medicine.ClinicalSpecs.Split(',').ToList()
@@ -124,14 +182,19 @@ namespace PharmacyAPI.Controllers
         // ───────────────────────────────────────────
         [HttpPost]
         [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<Medicine>> PostMedicine([FromForm] MedicineDto dto)
+        public async Task<IActionResult> PostMedicine([FromForm] MedicineDto dto)
         {
-            // ✅ تعديل: استقبال MedicineDto بدل Medicine مباشرة
-            if (dto.Price <= 0)
-                return BadRequest(new { message = "خطأ: السعر يجب أن يكون قيمة موجبة!" });
-
             if (string.IsNullOrWhiteSpace(dto.Name))
-                return BadRequest(new { message = "خطأ: اسم الدواء مطلوب!" });
+                return BadRequest(new { message = "اسم الدواء مطلوب!" });
+
+            if (dto.Price <= 0)
+                return BadRequest(new { message = "السعر يجب أن يكون قيمة موجبة!" });
+
+            // التحقق من عدم تكرار الـ SKU
+            var skuExists = await _context.Medicines
+                .AnyAsync(m => m.SKU == dto.SKU);
+            if (skuExists)
+                return BadRequest(new { message = "هذا الـ SKU مستخدم مسبقاً!" });
 
             var medicine = new Medicine
             {
@@ -151,7 +214,6 @@ namespace PharmacyAPI.Controllers
                 ClinicalSpecs = dto.ClinicalSpecs
             };
 
-            // ✅ تعديل: SaveImage فيها validation على النوع والحجم
             if (dto.ImageFile != null)
             {
                 try { medicine.ImageUrl = await SaveImage(dto.ImageFile); }
@@ -161,7 +223,14 @@ namespace PharmacyAPI.Controllers
 
             _context.Medicines.Add(medicine);
             await _context.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetMedicine), new { id = medicine.Id }, medicine);
+
+            return CreatedAtAction(nameof(GetMedicine), new { id = medicine.Id }, new
+            {
+                message = "تم إضافة الدواء بنجاح!",
+                medicine.Id,
+                medicine.Name,
+                medicine.SKU
+            });
         }
 
         // ───────────────────────────────────────────
@@ -172,41 +241,44 @@ namespace PharmacyAPI.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> PutMedicine(int id, [FromForm] MedicineDto dto)
         {
-            var existingMedicine = await _context.Medicines
-                .FirstOrDefaultAsync(m => m.Id == id);
+            var medicine = await _context.Medicines.FindAsync(id);
+            if (medicine == null)
+                return NotFound(new { message = "الدواء غير موجود!" });
 
-            if (existingMedicine == null)
-                return NotFound(new { message = "عذراً، الدواء المطلوب تعديله غير موجود!" });
+            // التحقق من عدم تكرار الـ SKU مع دواء آخر
+            var skuExists = await _context.Medicines
+                .AnyAsync(m => m.SKU == dto.SKU && m.Id != id);
+            if (skuExists)
+                return BadRequest(new { message = "هذا الـ SKU مستخدم من دواء آخر!" });
 
-            // ✅ تعديل: بنعدل على الـ existing بدل ما نحط entity جديدة
-            existingMedicine.Name = dto.Name;
-            existingMedicine.Description = dto.Description;
-            existingMedicine.Price = dto.Price;
-            existingMedicine.StockQuantity = dto.StockQuantity;
-            existingMedicine.CategoryId = dto.CategoryId;
-            existingMedicine.Manufacturer = dto.Manufacturer;
-            existingMedicine.SKU = dto.SKU;
-            existingMedicine.NdcNumber = dto.NdcNumber;
-            existingMedicine.Dosage = dto.Dosage;
-            existingMedicine.PackSize = dto.PackSize;
-            existingMedicine.IsFdaApproved = dto.IsFdaApproved;
-            existingMedicine.IsColdChain = dto.IsColdChain;
-            existingMedicine.BlackBoxWarning = dto.BlackBoxWarning;
-            existingMedicine.ClinicalSpecs = dto.ClinicalSpecs;
+            medicine.Name = dto.Name;
+            medicine.Description = dto.Description;
+            medicine.Price = dto.Price;
+            medicine.StockQuantity = dto.StockQuantity;
+            medicine.CategoryId = dto.CategoryId;
+            medicine.Manufacturer = dto.Manufacturer;
+            medicine.SKU = dto.SKU;
+            medicine.NdcNumber = dto.NdcNumber;
+            medicine.Dosage = dto.Dosage;
+            medicine.PackSize = dto.PackSize;
+            medicine.IsFdaApproved = dto.IsFdaApproved;
+            medicine.IsColdChain = dto.IsColdChain;
+            medicine.BlackBoxWarning = dto.BlackBoxWarning;
+            medicine.ClinicalSpecs = dto.ClinicalSpecs;
 
             if (dto.ImageFile != null)
             {
                 try
                 {
-                    DeleteOldImage(existingMedicine.ImageUrl);
-                    existingMedicine.ImageUrl = await SaveImage(dto.ImageFile);
+                    DeleteOldImage(medicine.ImageUrl);
+                    medicine.ImageUrl = await SaveImage(dto.ImageFile);
                 }
                 catch (InvalidOperationException ex)
                 { return BadRequest(new { message = ex.Message }); }
             }
 
             await _context.SaveChangesAsync();
-            return NoContent();
+            return Ok(new { message = "تم تعديل الدواء بنجاح!" });
         }
 
         // ───────────────────────────────────────────
@@ -219,11 +291,11 @@ namespace PharmacyAPI.Controllers
         {
             var medicine = await _context.Medicines.FindAsync(id);
             if (medicine == null)
-                return NotFound(new { message = "عذراً، الدواء المطلوب حذفه غير موجود!" });
+                return NotFound(new { message = "الدواء غير موجود!" });
 
             var isInCart = await _context.CartItems.AnyAsync(c => c.MedicineId == id);
             if (isInCart)
-                return BadRequest(new { message = "لا يمكن حذف هذا الدواء لأنه موجود في سلة مستخدم حالياً!" });
+                return BadRequest(new { message = "لا يمكن حذف هذا الدواء لأنه موجود في سلة مستخدم!" });
 
             var isInOrder = await _context.OrderDetails.AnyAsync(o => o.MedicineId == id);
             if (isInOrder)
@@ -236,22 +308,74 @@ namespace PharmacyAPI.Controllers
         }
 
         // ───────────────────────────────────────────
-        // Helper: حفظ الصورة مع validation
+        // 7. Export CSV (Admin فقط)
+        // GET /api/medicines/export
+        // ───────────────────────────────────────────
+        [HttpGet("export")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> ExportMedicines()
+        {
+            var medicines = await _context.Medicines
+                .AsNoTracking()
+                .Include(m => m.Category)
+                .OrderBy(m => m.Name)
+                .ToListAsync();
+
+            var csv = new StringBuilder();
+            csv.AppendLine("Name,SKU,Category,Price,Stock,FDA Approved,Cold Chain,Manufacturer");
+
+            foreach (var m in medicines)
+            {
+                csv.AppendLine(
+                    $"{m.Name}," +
+                    $"{m.SKU}," +
+                    $"{m.Category?.Name ?? "General"}," +
+                    $"{m.Price}," +
+                    $"{m.StockQuantity}," +
+                    $"{m.IsFdaApproved}," +
+                    $"{m.IsColdChain}," +
+                    $"{m.Manufacturer}"
+                );
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(csv.ToString());
+            return File(bytes, "text/csv", $"medicines_{DateTime.UtcNow:yyyyMMdd}.csv");
+        }
+
+        // ───────────────────────────────────────────
+        // 8. جلب المصنعين للفلتر
+        // GET /api/medicines/manufacturers
+        // ───────────────────────────────────────────
+        [HttpGet("manufacturers")]
+        public async Task<IActionResult> GetManufacturers()
+        {
+            var manufacturers = await _context.Medicines
+                .AsNoTracking()
+                .Select(m => m.Manufacturer)
+                .Distinct()
+                .OrderBy(m => m)
+                .ToListAsync();
+
+            return Ok(manufacturers);
+        }
+
+        // ───────────────────────────────────────────
+        // Helpers
         // ───────────────────────────────────────────
         private async Task<string> SaveImage(IFormFile file)
         {
-            // ✅ تعديل: التحقق من نوع الملف
             var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
             var extension = Path.GetExtension(file.FileName).ToLower();
+
             if (!allowedExtensions.Contains(extension))
                 throw new InvalidOperationException("نوع الملف غير مسموح! المسموح: jpg, jpeg, png, webp");
 
-            // ✅ تعديل: التحقق من الحجم (5MB)
             if (file.Length > 5 * 1024 * 1024)
                 throw new InvalidOperationException("حجم الصورة يتجاوز 5MB!");
 
             string folderPath = Path.Combine(_environment.WebRootPath, "images");
-            if (!Directory.Exists(folderPath)) Directory.CreateDirectory(folderPath);
+            if (!Directory.Exists(folderPath))
+                Directory.CreateDirectory(folderPath);
 
             string fileName = Guid.NewGuid().ToString() + extension;
             string filePath = Path.Combine(folderPath, fileName);
@@ -262,17 +386,14 @@ namespace PharmacyAPI.Controllers
             return "/images/" + fileName;
         }
 
-        // ───────────────────────────────────────────
-        // Helper: حذف الصورة القديمة
-        // ───────────────────────────────────────────
         private void DeleteOldImage(string? imageUrl)
         {
-            if (string.IsNullOrEmpty(imageUrl) || imageUrl.Contains("default.png")) return;
+            if (string.IsNullOrEmpty(imageUrl) || imageUrl.Contains("default.png"))
+                return;
 
             string filePath = Path.Combine(_environment.WebRootPath, imageUrl.TrimStart('/'));
-            if (System.IO.File.Exists(filePath)) System.IO.File.Delete(filePath);
+            if (System.IO.File.Exists(filePath))
+                System.IO.File.Delete(filePath);
         }
-
-        private bool MedicineExists(int id) => _context.Medicines.Any(e => e.Id == id);
     }
 }

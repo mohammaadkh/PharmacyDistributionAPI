@@ -29,7 +29,11 @@ namespace PharmacyAPI.Models
         public string? NdcNumber { get; set; }
         public string? BlackBoxWarning { get; set; }
         public string? ClinicalSpecs { get; set; } // مخزنة كنص مفصول بفواصل
-
+                                                   // أضفهم بعد ClinicalSpecs
+        public DateTime? FdaApprovalDate { get; set; }
+        public string? TemperatureRange { get; set; }
+        public decimal? HumidityLimit { get; set; }
+        public string? ControlledSubstance { get; set; } = "Non-Controlled";
         public int CategoryId { get; set; }
         public Category? Category { get; set; }
     }

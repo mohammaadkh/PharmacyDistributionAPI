@@ -1,6 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿ using Microsoft.EntityFrameworkCore;
 using PharmacyAPI.Model;
-using PharmacyAPI.Models; // تأكد أن المسار صحيح لموديلاتك
+using PharmacyAPI.Models;
 
 namespace PharmacyAPI.Data
 {
@@ -11,16 +11,20 @@ namespace PharmacyAPI.Data
         public DbSet<Medicine> Medicines { get; set; }
         public DbSet<Category> Categories { get; set; }
         public DbSet<User> Users { get; set; }
+        public DbSet<SupportTicket> SupportTickets { get; set; }
         public DbSet<CartItem> CartItems { get; set; }
         public DbSet<Order> Orders { get; set; }
         public DbSet<OrderDetail> OrderDetails { get; set; }
+        // ✅ جديد
+        public DbSet<Notification> Notifications { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            // --- 1. ضبط دقة الأرقام المالية (Decimal Precision) ---
-            modelBuilder.Entity<Medicine>().Property(m => m.Price).HasPrecision(18, 2);
-            modelBuilder.Entity<OrderDetail>().Property(m => m.PriceAtPurchase).HasPrecision(18, 2);
-
+            // Decimal Precision
+            modelBuilder.Entity<Medicine>()
+                .Property(m => m.Price).HasPrecision(18, 2);
+            modelBuilder.Entity<OrderDetail>()
+                .Property(m => m.PriceAtPurchase).HasPrecision(18, 2);
             modelBuilder.Entity<Order>(entity =>
             {
                 entity.Property(o => o.Subtotal).HasPrecision(18, 2);
@@ -29,7 +33,7 @@ namespace PharmacyAPI.Data
                 entity.Property(o => o.TotalAmount).HasPrecision(18, 2);
             });
 
-            // --- 2. إعدادات قيود الحقول (Constraints) ---
+            // Constraints
             modelBuilder.Entity<Medicine>(entity =>
             {
                 entity.Property(m => m.Dosage).IsRequired().HasMaxLength(50);
@@ -38,40 +42,51 @@ namespace PharmacyAPI.Data
                 entity.Property(m => m.SKU).IsRequired().HasMaxLength(50);
             });
 
-            // ✅ إضافة: جعل الإيميل فريد (Unique Index) لمنع تكرار الحسابات نهائياً
+            // Unique Email
             modelBuilder.Entity<User>()
                 .HasIndex(u => u.Email)
                 .IsUnique();
 
-            // --- 3. إدارة العلاقات وحماية البيانات من الحذف (Relationships & Restrict Delete) ---
-
-            // أ- ربط الصنف بالأدوية (منع حذف صنف يحتوي أدوية)
+            // Relationships
             modelBuilder.Entity<Category>()
                 .HasMany(c => c.Medicines)
                 .WithOne(m => m.Category)
                 .HasForeignKey(m => m.CategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // ب- ربط المستخدم بالطلبات (ضمان بقاء السجلات المالية)
             modelBuilder.Entity<Order>()
                 .HasOne(o => o.User)
                 .WithMany(u => u.Orders)
                 .HasForeignKey(o => o.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // ج- ربط السلة بالدواء (منع حذف دواء موجود في سلة مستخدم)
             modelBuilder.Entity<CartItem>()
                 .HasOne(ci => ci.Medicine)
                 .WithMany()
                 .HasForeignKey(ci => ci.MedicineId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // د- ربط تفاصيل الطلب بالدواء (حماية أرشيف المبيعات)
             modelBuilder.Entity<OrderDetail>()
                 .HasOne(od => od.Medicine)
                 .WithMany()
                 .HasForeignKey(od => od.MedicineId)
                 .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupportTicket>()
+                 .HasOne(t => t.User)
+                 .WithMany()
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // أضفه مع باقي الـ Decimal Precision
+            modelBuilder.Entity<Medicine>()
+                .Property(m => m.HumidityLimit)
+                .HasPrecision(5, 2);
+
+            // ✅ جديد — Notifications
+            modelBuilder.Entity<Notification>()
+                .HasOne(n => n.User)
+                .WithMany(u => u.Notifications) // ✅ حدد الـ navigation property
+                .HasForeignKey(n => n.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             base.OnModelCreating(modelBuilder);
         }

@@ -6,6 +6,7 @@ using PharmacyAPI.Data;
 using PharmacyAPI.Models;
 using PharmacyAPI.Services;
 using System.Text;
+using BC = BCrypt.Net.BCrypt;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,15 +17,11 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // 2. إعدادات الـ JSON لحماية العلاقات الدائرية
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
-    options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+    options.JsonSerializerOptions.ReferenceHandler =
+        System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
 });
 
 // 3. تعريف سياسة الـ CORS
-// ✅ تعديل: أضفنا سياسة ثانية للـ Production بدل AllowAll
-// قبل: سياسة وحدة AllowAnyOrigin للكل
-// بعد: سياستين — AllowAll للـ Development، AllowFrontend للـ Production
-// ليش: AllowAnyOrigin بالـ Production يخلي أي موقع يكلم الـ API
-//       وهاد خطر أمني — نحدد الفرونت بس يكلمنا
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", b =>
@@ -55,7 +52,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
@@ -78,7 +76,11 @@ builder.Services.AddSwaggerGen(options =>
         {
             new OpenApiSecurityScheme
             {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
             },
             new string[] {}
         }
@@ -95,10 +97,6 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-
-    // ✅ تعديل: AllowAll بالـ Development بس
-    // قبل: app.UseCors("AllowAll") دايماً
-    // بعد: AllowAll بالـ Development، AllowFrontend بالـ Production
     app.UseCors("AllowAll");
 }
 else
@@ -116,25 +114,26 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-    // ✅ تعديل: Migrate() بدل EnsureCreated()
-    // قبل: context.Database.EnsureCreated()
-    // بعد: context.Database.Migrate()
-    // ليش: EnsureCreated بيعمل الداتابيز من الصفر بس ما بطبق
-    //       أي Migration جديد — Migrate() بيطبق كل التغييرات
-    //       الجديدة تلقائياً وما بمسح البيانات الموجودة
     context.Database.Migrate();
 
+    // ─────────────────────────────────────
+    // Seed Categories
+    // ─────────────────────────────────────
     if (!context.Categories.Any())
     {
         context.Categories.AddRange(
             new Category { Name = "Antibiotics" },
             new Category { Name = "Cardiology" },
-            new Category { Name = "Endocrinology" }
+            new Category { Name = "Endocrinology" },
+            new Category { Name = "Neurology" },
+            new Category { Name = "Oncology" }
         );
         context.SaveChanges();
     }
 
+    // ─────────────────────────────────────
+    // Seed Medicines
+    // ─────────────────────────────────────
     if (!context.Medicines.Any())
     {
         var categories = context.Categories.ToList();
@@ -181,8 +180,40 @@ using (var scope = app.Services.CreateScope())
                 IsFdaApproved = true,
                 CategoryId = categories.First(c => c.Name == "Endocrinology").Id,
                 ImageUrl = "/images/insulin.png"
+            },
+            new Medicine
+            {
+                Name = "Gabapentin Capsules",
+                Dosage = "300mg",
+                Manufacturer = "Novartis AG",
+                PackSize = "90 Capsules",
+                SKU = "GAB-300-XY2",
+                Price = 18.25m,
+                StockQuantity = 680,
+                IsFdaApproved = true,
+                IsGmpCertified = true,
+                CategoryId = categories.First(c => c.Name == "Neurology").Id,
+                ImageUrl = "/images/default.png"
             }
         );
+        context.SaveChanges();
+    }
+
+    // ─────────────────────────────────────
+    // ✅ Seed Admin
+    // ─────────────────────────────────────
+    if (!context.Users.Any(u => u.Role == "Admin"))
+    {
+        context.Users.Add(new User
+        {
+            FullName = "PharmaLink Admin",
+            Email = "admin@pharmalink.com",
+            PasswordHash = BC.HashPassword("Admin@123456"),
+            PhoneNumber = "0000000000",
+            Role = "Admin",
+            OrganizationType = "Administration",
+            IsEmailConfirmed = true
+        });
         context.SaveChanges();
     }
 }

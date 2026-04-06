@@ -1,4 +1,5 @@
-﻿using PharmacyAPI.Models;
+﻿using PharmacyAPI.Model;
+using PharmacyAPI.Models;
 
 namespace PharmacyAPI.Models
 {
@@ -9,30 +10,37 @@ namespace PharmacyAPI.Models
         public string Email { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
         public string PhoneNumber { get; set; } = string.Empty;
-
-        // ✅ تعديل: بدل "Customer" صار حسب الواجهة
         public string Role { get; set; } = string.Empty;
-
-        // ✅ مضاف: نوع المنظمة
         public string OrganizationType { get; set; } = string.Empty;
 
-        // ✅ مضاف حديثاً: تفعيل الإيميل (Email Verification)
-        // بتبلش False وبس يدخل الكود بتصير True
+        // Email Verification
         public bool IsEmailConfirmed { get; set; } = false;
-
-        // لتخزين الكود المكون من 6 أرقام مثلاً
         public string? EmailVerificationCode { get; set; }
 
         // Reset Password
         public string? ResetToken { get; set; }
         public DateTime? ResetTokenExpiry { get; set; }
 
-        // ✅ مضاف: Refresh Token
+        // Refresh Token
         public string? RefreshToken { get; set; }
         public DateTime? RefreshTokenExpiry { get; set; }
 
-        // العلاقات - ما تغيرت
+        // Settings & Identity
+        public string? NpiNumber { get; set; }
+        public string? DeaRegistration { get; set; }
+
+        // Global Settings
+        public string Language { get; set; } = "English (United States)";
+        public string Timezone { get; set; } = "(GMT-05:00) Eastern Time";
+        public bool EmailAlertsEnabled { get; set; } = true;
+        public bool PushNotificationsEnabled { get; set; } = true;
+
+        // Avatar
+        public string? ImageUrl { get; set; } = "/avatars/default.png";
+
+        // العلاقات
         public List<Order> Orders { get; set; } = new();
         public List<CartItem> CartItems { get; set; } = new();
+        public List<Notification> Notifications { get; set; } = new();
     }
 }
