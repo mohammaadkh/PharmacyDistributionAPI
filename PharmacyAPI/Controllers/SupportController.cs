@@ -23,6 +23,7 @@ namespace PharmacyAPI.Controllers
         // GET /api/support/faqs
         // ───────────────────────────────────────────
         [HttpGet("faqs")]
+        [AllowAnonymous]
         public IActionResult GetFaqs()
         {
             var faqs = new[]
@@ -79,7 +80,10 @@ namespace PharmacyAPI.Controllers
         // POST /api/support/ticket
         // ───────────────────────────────────────────
         [HttpPost("ticket")]
-        [Authorize]
+        // ✅ تعديل: Pharmacist و PharmaceuticalCompany بس يفتحون تذاكر
+        // قبل: [Authorize] — أي حساب حتى Admin
+        // بعد: [Authorize(Roles = "Pharmacist,PharmaceuticalCompany")]
+        [Authorize(Roles = "Pharmacist,PharmaceuticalCompany")]
         public async Task<IActionResult> SubmitTicket([FromBody] SupportTicketDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.Subject))
@@ -103,7 +107,6 @@ namespace PharmacyAPI.Controllers
             _context.SupportTickets.Add(ticket);
             await _context.SaveChangesAsync();
 
-            // إشعار للمستخدم
             await NotificationsController.AddNotification(
                 _context,
                 userId,
@@ -125,7 +128,10 @@ namespace PharmacyAPI.Controllers
         // GET /api/support/tickets
         // ───────────────────────────────────────────
         [HttpGet("tickets")]
-        [Authorize]
+        // ✅ تعديل: Pharmacist و PharmaceuticalCompany بس يشوفون تذاكرهم
+        // قبل: [Authorize]
+        // بعد: [Authorize(Roles = "Pharmacist,PharmaceuticalCompany")]
+        [Authorize(Roles = "Pharmacist,PharmaceuticalCompany")]
         public async Task<IActionResult> GetMyTickets()
         {
             var userId = GetUserId();
@@ -142,7 +148,6 @@ namespace PharmacyAPI.Controllers
                     t.Category,
                     t.Status,
                     t.CreatedAt,
-                    // ✅ أضفنا الرد هون
                     t.AdminReply,
                     t.RepliedAt
                 })
@@ -177,7 +182,6 @@ namespace PharmacyAPI.Controllers
                     t.Status,
                     t.Message,
                     t.CreatedAt,
-                    // ✅ أضفنا الرد هون
                     t.AdminReply,
                     t.RepliedAt,
                     User = new
@@ -220,7 +224,6 @@ namespace PharmacyAPI.Controllers
             ticket.Status = "Resolved";
             await _context.SaveChangesAsync();
 
-            // ✅ إشعار للمستخدم بالرد
             await NotificationsController.AddNotification(
                 _context,
                 ticket.UserId,
@@ -253,7 +256,6 @@ namespace PharmacyAPI.Controllers
             ticket.Status = dto.Status;
             await _context.SaveChangesAsync();
 
-            // ✅ إشعار للمستخدم
             await NotificationsController.AddNotification(
                 _context,
                 ticket.UserId,
