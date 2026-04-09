@@ -12,8 +12,8 @@ using PharmacyAPI.Data;
 namespace PharmacyAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260406090159_InitialProMax123")]
-    partial class InitialProMax123
+    [Migration("20260409093927_AddExpiryDateToMedicines123")]
+    partial class AddExpiryDateToMedicines123
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -328,6 +328,9 @@ namespace PharmacyAPI.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AdminReply")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -338,6 +341,9 @@ namespace PharmacyAPI.Migrations
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("RepliedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Status")
                         .IsRequired()

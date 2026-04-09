@@ -121,7 +121,7 @@ namespace PharmacyAPI.Controllers
         }
 
         // ───────────────────────────────────────────
-        // 3. جلب تذاكر المستخدم
+        // 3. جلب تذاكر المستخدم مع الرد
         // GET /api/support/tickets
         // ───────────────────────────────────────────
         [HttpGet("tickets")]
@@ -138,9 +138,13 @@ namespace PharmacyAPI.Controllers
                 {
                     t.Id,
                     t.Subject,
+                    t.Message,
                     t.Category,
                     t.Status,
-                    t.CreatedAt
+                    t.CreatedAt,
+                    // ✅ أضفنا الرد هون
+                    t.AdminReply,
+                    t.RepliedAt
                 })
                 .ToListAsync();
 
@@ -173,6 +177,9 @@ namespace PharmacyAPI.Controllers
                     t.Status,
                     t.Message,
                     t.CreatedAt,
+                    // ✅ أضفنا الرد هون
+                    t.AdminReply,
+                    t.RepliedAt,
                     User = new
                     {
                         t.User.FullName,
@@ -186,7 +193,47 @@ namespace PharmacyAPI.Controllers
         }
 
         // ───────────────────────────────────────────
-        // 5. Admin يغير Status التذكرة
+        // 5. Admin يرد على التذكرة
+        // POST /api/support/tickets/{id}/reply
+        // ───────────────────────────────────────────
+        [HttpPost("tickets/{id}/reply")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> ReplyToTicket(
+            int id,
+            [FromBody] ReplyTicketDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Reply))
+                return BadRequest(new { message = "الرد مطلوب!" });
+
+            var ticket = await _context.SupportTickets
+                .Include(t => t.User)
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (ticket == null)
+                return NotFound(new { message = "التذكرة غير موجودة!" });
+
+            if (ticket.Status == "Closed")
+                return BadRequest(new { message = "لا يمكن الرد على تذكرة مغلقة!" });
+
+            ticket.AdminReply = dto.Reply;
+            ticket.RepliedAt = DateTime.UtcNow;
+            ticket.Status = "Resolved";
+            await _context.SaveChangesAsync();
+
+            // ✅ إشعار للمستخدم بالرد
+            await NotificationsController.AddNotification(
+                _context,
+                ticket.UserId,
+                "رد على تذكرة الدعم",
+                $"رد فريق الدعم على تذكرتك رقم #{ticket.Id}: {dto.Reply}",
+                "Compliance"
+            );
+
+            return Ok(new { message = "تم الرد على التذكرة بنجاح!" });
+        }
+
+        // ───────────────────────────────────────────
+        // 6. Admin يغير Status التذكرة
         // PATCH /api/support/tickets/{id}/status
         // ───────────────────────────────────────────
         [HttpPatch("tickets/{id}/status")]
@@ -206,7 +253,7 @@ namespace PharmacyAPI.Controllers
             ticket.Status = dto.Status;
             await _context.SaveChangesAsync();
 
-            // إشعار للمستخدم
+            // ✅ إشعار للمستخدم
             await NotificationsController.AddNotification(
                 _context,
                 ticket.UserId,
@@ -223,7 +270,7 @@ namespace PharmacyAPI.Controllers
         // ───────────────────────────────────────────
         private int GetUserId()
         {
-            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim))
                 throw new UnauthorizedAccessException();
             return int.Parse(userIdClaim);
@@ -243,5 +290,10 @@ namespace PharmacyAPI.Controllers
     public class UpdateTicketStatusDto
     {
         public string Status { get; set; } = string.Empty;
+    }
+
+    public class ReplyTicketDto
+    {
+        public string Reply { get; set; } = string.Empty;
     }
 }

@@ -3,10 +3,12 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
+#pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
+
 namespace PharmacyAPI.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialProMax : Migration
+    public partial class AddExpiryDateToMedicines123 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -70,7 +72,7 @@ namespace PharmacyAPI.Migrations
                     SKU = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     Dosage = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     Manufacturer = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    PackSize = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    PackSize = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     IsFdaApproved = table.Column<bool>(type: "bit", nullable: false),
                     IsGmpCertified = table.Column<bool>(type: "bit", nullable: false),
                     IsColdChain = table.Column<bool>(type: "bit", nullable: false),
@@ -152,6 +154,8 @@ namespace PharmacyAPI.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     UserId = table.Column<int>(type: "int", nullable: false),
                     Subject = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    AdminReply = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    RepliedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     Message = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Category = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
@@ -186,7 +190,7 @@ namespace PharmacyAPI.Migrations
                         column: x => x.MedicineId,
                         principalTable: "Medicines",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_CartItems_Users_UserId",
                         column: x => x.UserId,
@@ -214,13 +218,31 @@ namespace PharmacyAPI.Migrations
                         column: x => x.MedicineId,
                         principalTable: "Medicines",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_OrderDetails_Orders_OrderId",
                         column: x => x.OrderId,
                         principalTable: "Orders",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.InsertData(
+                table: "Categories",
+                columns: new[] { "Id", "Description", "Name" },
+                values: new object[,]
+                {
+                    { 1, "Bacterial infections", "Antibiotics" },
+                    { 2, "Pain relief", "Painkillers" }
+                });
+
+            migrationBuilder.InsertData(
+                table: "Medicines",
+                columns: new[] { "Id", "BlackBoxWarning", "CategoryId", "ClinicalSpecs", "ControlledSubstance", "Description", "Dosage", "FdaApprovalDate", "HumidityLimit", "ImageUrl", "IsColdChain", "IsFdaApproved", "IsGmpCertified", "Manufacturer", "Name", "NdcNumber", "PackSize", "Price", "SKU", "StockQuantity", "TemperatureRange" },
+                values: new object[,]
+                {
+                    { 1, null, 2, null, "Non-Controlled", "", "500mg", null, null, "/images/default.png", false, true, false, "GSK", "Panadol", null, "", 12.50m, "PAN-001", 100, null },
+                    { 2, null, 1, null, "Non-Controlled", "", "250mg", null, null, "/images/default.png", false, false, false, "Pfizer", "Amoxicillin", null, "", 45.00m, "AMO-002", 50, null }
                 });
 
             migrationBuilder.CreateIndex(
